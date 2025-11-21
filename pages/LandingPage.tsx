@@ -16,10 +16,7 @@ import {
   Moon,
   ScanLine,
   Check,
-  AlertTriangle,
-  Thermometer,
   User,
-  Binary,
   Cpu,
   Aperture
 } from 'lucide-react';
@@ -60,7 +57,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, isDarkMode, toggl
           ? 'bg-white/80 dark:bg-slate-950/80 backdrop-blur-lg border-b border-slate-200 dark:border-white/10 shadow-sm' 
           : 'bg-transparent'
       }`}>
-        <div className="max-w-screen-2xl mx-auto px-6 lg:px-12 h-20 flex items-center justify-between">
+        <div className="w-full max-w-[1800px] mx-auto px-4 sm:px-8 lg:px-16 h-20 flex items-center justify-between">
           <div className="flex items-center gap-2 group cursor-pointer" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth'})}>
             <div className="bg-emerald-500/10 p-2 rounded-lg border border-emerald-500/20 group-hover:border-emerald-500/50 transition-all">
               <Sprout className="w-6 h-6 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform" />
@@ -125,7 +122,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, isDarkMode, toggl
           </div>
         </div>
 
-        <div className={`max-w-screen-2xl mx-auto px-6 lg:px-12 relative z-10 grid lg:grid-cols-2 gap-12 lg:gap-24 items-center transition-all duration-1000 transform ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
+        <div className={`w-full max-w-[1800px] mx-auto px-4 sm:px-8 lg:px-16 relative z-10 grid lg:grid-cols-2 gap-12 lg:gap-24 items-center transition-all duration-1000 transform ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
           <div className="space-y-8">
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white dark:bg-slate-900 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-sm font-medium backdrop-blur-md shadow-sm dark:shadow-[0_0_15px_rgba(16,185,129,0.1)] animate-pulse">
               <span className="relative flex h-2 w-2">
@@ -135,14 +132,14 @@ const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, isDarkMode, toggl
               Local AI Engine Online
             </div>
             
-            <h1 className="text-5xl lg:text-7xl font-bold leading-tight tracking-tight text-slate-900 dark:text-white">
+            <h1 className="text-5xl sm:text-6xl lg:text-7xl xl:text-8xl font-bold leading-tight tracking-tight text-slate-900 dark:text-white">
               Smart Farming. <br />
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 via-teal-500 to-cyan-600 dark:from-emerald-400 dark:via-teal-300 dark:to-cyan-400 animate-gradient-x">
                 No Cloud Required.
               </span>
             </h1>
             
-            <p className="text-lg text-slate-600 dark:text-slate-400 leading-relaxed max-w-xl border-l-2 border-emerald-500/30 pl-6">
+            <p className="text-lg sm:text-xl text-slate-600 dark:text-slate-400 leading-relaxed max-w-2xl border-l-4 border-emerald-500/30 pl-6">
               Deploy advanced generative AI for soil analysis, crop health, and security directly on the edge. 
               Zero latency, 100% data privacy, and works perfectly offline.
             </p>
@@ -165,7 +162,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, isDarkMode, toggl
             </div>
           </div>
 
-          <div className="relative hidden lg:block h-[500px] w-full">
+          <div className="relative hidden lg:block h-[500px] xl:h-[600px] w-full">
              <SimulatedScanner />
           </div>
         </div>
@@ -186,7 +183,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, isDarkMode, toggl
 
       {/* Edge Tech Section */}
       <section id="edge-tech" className="py-20 bg-white dark:bg-slate-900 border-y border-slate-100 dark:border-white/5 transition-colors duration-300">
-         <div className="max-w-screen-2xl mx-auto px-6 lg:px-12">
+         <div className="w-full max-w-[1800px] mx-auto px-4 sm:px-8 lg:px-16">
             <div className="text-center mb-16">
                 <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-4">Why Edge Computing?</h2>
                 <p className="text-slate-600 dark:text-slate-400 max-w-2xl mx-auto">In remote farming locations, internet connectivity is a luxury. Our system is built to perform critical AI tasks locally.</p>
@@ -228,7 +225,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, isDarkMode, toggl
 
       {/* Features Section */}
       <section id="features" className="py-24 bg-slate-50 dark:bg-slate-950 relative transition-colors duration-300">
-        <div className="max-w-screen-2xl mx-auto px-6 lg:px-12">
+        <div className="w-full max-w-[1800px] mx-auto px-4 sm:px-8 lg:px-16">
           <div className="text-center max-w-2xl mx-auto mb-16">
              <span className="text-emerald-600 dark:text-emerald-400 font-bold tracking-wider uppercase text-sm mb-2 block">System Modules</span>
             <h2 className="text-3xl md:text-4xl font-bold text-slate-900 dark:text-white mb-4">Comprehensive Farm Management</h2>
@@ -273,7 +270,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, isDarkMode, toggl
           <Sprout className="w-96 h-96" />
         </div>
         
-        <div className="max-w-screen-2xl mx-auto px-6 lg:px-12 relative z-10">
+        <div className="w-full max-w-[1800px] mx-auto px-4 sm:px-8 lg:px-16 relative z-10">
           <div className="grid lg:grid-cols-2 gap-16 lg:gap-24 items-center">
             <div className="space-y-6">
               <h2 className="text-3xl md:text-4xl font-bold">Sustainable Farming Through <span className="text-emerald-600 dark:text-emerald-400">Edge AI</span></h2>
@@ -305,7 +302,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, isDarkMode, toggl
 
       {/* Contact Section */}
       <section id="contact" className="py-24 bg-slate-50 dark:bg-slate-950 border-t border-slate-100 dark:border-white/5 transition-colors duration-300">
-        <div className="max-w-6xl mx-auto px-6 lg:px-12">
+        <div className="w-full max-w-[1800px] mx-auto px-4 sm:px-8 lg:px-16">
           <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-xl dark:shadow-2xl border border-slate-200 dark:border-white/10 overflow-hidden flex flex-col md:flex-row">
             <div className="md:w-1/2 bg-gradient-to-br from-emerald-800 to-slate-900 p-10 lg:p-16 text-white flex flex-col justify-between relative overflow-hidden">
               <div className="absolute inset-0 bg-[url('https://grain-y-texture.png')] opacity-10"></div>
@@ -345,7 +342,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, isDarkMode, toggl
 
       {/* Footer */}
       <footer className="bg-white dark:bg-slate-950 border-t border-slate-100 dark:border-white/5 py-12 transition-colors duration-300">
-        <div className="max-w-screen-2xl mx-auto px-6 lg:px-12 flex flex-col md:flex-row justify-between items-center gap-6">
+        <div className="w-full max-w-[1800px] mx-auto px-4 sm:px-8 lg:px-16 flex flex-col md:flex-row justify-between items-center gap-6">
           <div className="flex items-center gap-2 text-slate-900 dark:text-white opacity-90">
             <Sprout className="w-5 h-5 text-emerald-500" />
             <span className="font-bold tracking-tight">AgroVision <span className="text-slate-500 dark:text-slate-600 font-normal text-sm ml-2">EdgeOS v2.1</span></span>
