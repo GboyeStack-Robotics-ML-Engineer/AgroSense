@@ -158,10 +158,16 @@ const App: React.FC = () => {
 
   // Render Landing Page if state is true
   if (showLandingPage) {
-    return <LandingPage onNavigate={(view) => {
-      setCurrentView(view);
-      setShowLandingPage(false);
-    }} />;
+    return (
+      <LandingPage 
+        onNavigate={(view) => {
+          setCurrentView(view);
+          setShowLandingPage(false);
+        }} 
+        isDarkMode={isDarkMode}
+        toggleTheme={toggleDarkMode}
+      />
+    );
   }
 
   // Render Main App
