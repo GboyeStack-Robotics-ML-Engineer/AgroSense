@@ -1,0 +1,8 @@
+{
+  "name": "SmartEdge AgroVision",
+  "description": "An AI-powered farming dashboard simulating soil moisture prediction, leaf health analysis, and farm security monitoring.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
