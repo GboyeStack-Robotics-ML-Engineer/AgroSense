@@ -249,7 +249,7 @@ const App: React.FC = () => {
 
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto p-4 md:p-6">
-          <div className="max-w-6xl mx-auto">
+          <div className="w-full">
             {renderContent()}
           </div>
         </div>
