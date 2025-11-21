@@ -9,6 +9,7 @@ export interface SensorData {
   moisture: number; // 0-100%
   temperature: number; // Celsius
   humidity: number; // 0-100%
+  ph: number; // 0-14
 }
 
 export interface Alert {

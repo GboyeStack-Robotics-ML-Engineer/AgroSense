@@ -12,6 +12,7 @@ export const generateInitialHistory = (): SensorData[] => {
       moisture: 45 + Math.random() * 10,
       temperature: 24 + Math.random() * 2,
       humidity: 60 + Math.random() * 5,
+      ph: 6.0 + Math.random() * 1.0, // pH between 6 and 7
     });
   }
   return history;
@@ -21,10 +22,12 @@ export const generateNextReading = (lastReading: SensorData): SensorData => {
   // Random walk behavior
   const moistureChange = (Math.random() - 0.5) * 2;
   const tempChange = (Math.random() - 0.5) * 0.5;
+  const phChange = (Math.random() - 0.5) * 0.1;
   
   // Clamp values
   let newMoisture = Math.max(0, Math.min(100, lastReading.moisture + moistureChange));
   let newTemp = Math.max(15, Math.min(40, lastReading.temperature + tempChange));
+  let newPh = Math.max(4, Math.min(9, lastReading.ph + phChange));
   
   // Simulate drying out over time slightly if not watered
   if (Math.random() > 0.7) newMoisture -= 0.1;
@@ -34,6 +37,7 @@ export const generateNextReading = (lastReading: SensorData): SensorData => {
     moisture: newMoisture,
     temperature: newTemp,
     humidity: Math.max(0, Math.min(100, lastReading.humidity + (Math.random() - 0.5))),
+    ph: newPh,
   };
 };
 

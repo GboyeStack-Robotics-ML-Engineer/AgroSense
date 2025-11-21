@@ -1,19 +1,20 @@
 import React, { useState } from 'react';
 import { SensorData } from '../types';
-import { MoistureChart } from '../components/MoistureChart';
+import { SensorChart } from '../components/MoistureChart';
 import { getFarmingAdvice } from '../services/geminiService';
 import { Sparkles, Send, Loader2 } from 'lucide-react';
 
 interface SoilMonitorProps {
   history: SensorData[];
+  isDarkMode?: boolean;
 }
 
-const SoilMonitor: React.FC<SoilMonitorProps> = ({ history }) => {
+const SoilMonitor: React.FC<SoilMonitorProps> = ({ history, isDarkMode }) => {
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   
-  const latest = history[history.length - 1] || { moisture: 0, temperature: 0 };
+  const latest = history[history.length - 1] || { moisture: 0, temperature: 0, humidity: 0, ph: 7.0, timestamp: 0 };
 
   const handleAskAI = async () => {
     if (!question.trim()) return;
@@ -29,11 +30,25 @@ const SoilMonitor: React.FC<SoilMonitorProps> = ({ history }) => {
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-2xl font-bold text-slate-900">Soil Monitor</h1>
-        <p className="text-slate-500">Detailed analytics and AI advisory.</p>
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Soil Monitor</h1>
+        <p className="text-slate-500 dark:text-slate-400">Detailed analytics and AI advisory.</p>
       </header>
 
-      <MoistureChart data={history} />
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-4">
+        <div className="mb-4 flex items-center justify-between">
+             <h3 className="font-semibold text-slate-800 dark:text-white">Real-time Moisture Trends</h3>
+             <span className="text-xs px-2 py-1 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400 rounded-full font-medium">Live</span>
+        </div>
+        <SensorChart 
+            data={history} 
+            dataKey="moisture" 
+            title="Soil Moisture" 
+            color="#10b981" 
+            unit="%" 
+            isDarkMode={isDarkMode}
+            threshold={30}
+        />
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* AI Advisor */}
@@ -43,7 +58,7 @@ const SoilMonitor: React.FC<SoilMonitorProps> = ({ history }) => {
             <h3 className="font-semibold text-lg">AI Soil Advisor</h3>
           </div>
           
-          <div className="bg-white/10 rounded-lg p-4 min-h-[120px] mb-4 text-sm leading-relaxed">
+          <div className="bg-white/10 rounded-lg p-4 min-h-[120px] mb-4 text-sm leading-relaxed text-emerald-50">
              {isLoading ? (
                  <div className="flex items-center justify-center h-full gap-2 text-emerald-200">
                      <Loader2 className="w-4 h-4 animate-spin" /> Thinking...
@@ -75,23 +90,23 @@ const SoilMonitor: React.FC<SoilMonitorProps> = ({ history }) => {
         </div>
 
         {/* Manual Logs / Info */}
-        <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-           <h3 className="font-semibold text-slate-800 mb-4">Sensor Configuration</h3>
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm transition-colors duration-300">
+           <h3 className="font-semibold text-slate-800 dark:text-white mb-4">Sensor Configuration</h3>
            <div className="space-y-4 text-sm">
-              <div className="flex justify-between py-2 border-b border-slate-100">
-                  <span className="text-slate-500">Sensor Type</span>
-                  <span className="font-medium text-slate-800">Capacitive Soil Moisture v1.2</span>
+              <div className="flex justify-between py-2 border-b border-slate-100 dark:border-slate-800">
+                  <span className="text-slate-500 dark:text-slate-400">Sensor Type</span>
+                  <span className="font-medium text-slate-800 dark:text-slate-200">Capacitive Soil Moisture v1.2</span>
               </div>
-              <div className="flex justify-between py-2 border-b border-slate-100">
-                  <span className="text-slate-500">Calibration</span>
-                  <span className="font-medium text-slate-800">Wet: 3200mv, Dry: 1500mv</span>
+              <div className="flex justify-between py-2 border-b border-slate-100 dark:border-slate-800">
+                  <span className="text-slate-500 dark:text-slate-400">Calibration</span>
+                  <span className="font-medium text-slate-800 dark:text-slate-200">Wet: 3200mv, Dry: 1500mv</span>
               </div>
-              <div className="flex justify-between py-2 border-b border-slate-100">
-                  <span className="text-slate-500">Last Polling</span>
-                  <span className="font-medium text-slate-800">Just now</span>
+              <div className="flex justify-between py-2 border-b border-slate-100 dark:border-slate-800">
+                  <span className="text-slate-500 dark:text-slate-400">Last Polling</span>
+                  <span className="font-medium text-slate-800 dark:text-slate-200">Just now</span>
               </div>
-               <div className="flex justify-between py-2 border-b border-slate-100">
-                  <span className="text-slate-500">Threshold Alert</span>
+               <div className="flex justify-between py-2 border-b border-slate-100 dark:border-slate-800">
+                  <span className="text-slate-500 dark:text-slate-400">Threshold Alert</span>
                   <span className="font-medium text-red-500">&lt; 30%</span>
               </div>
            </div>

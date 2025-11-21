@@ -2,15 +2,29 @@ import React from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { SensorData } from '../types';
 
-interface MoistureChartProps {
+interface SensorChartProps {
   data: SensorData[];
+  dataKey: keyof SensorData;
+  title: string;
+  color: string; // Hex color for the chart line/fill
+  unit: string;
+  isDarkMode?: boolean;
+  threshold?: number;
 }
 
-export const MoistureChart: React.FC<MoistureChartProps> = ({ data }) => {
+export const SensorChart: React.FC<SensorChartProps> = ({ 
+  data, 
+  dataKey, 
+  title, 
+  color, 
+  unit, 
+  isDarkMode = false,
+  threshold 
+}) => {
   // Prepare data for chart - we only take last 20 points for clarity
   const chartData = data.slice(-20).map(d => ({
     time: new Date(d.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-    moisture: parseFloat(d.moisture.toFixed(1)),
+    value: typeof d[dataKey] === 'number' ? parseFloat((d[dataKey] as number).toFixed(2)) : 0,
     predicted: null as number | null,
   }));
 
@@ -18,78 +32,74 @@ export const MoistureChart: React.FC<MoistureChartProps> = ({ data }) => {
   if (chartData.length > 2) {
     const last = chartData[chartData.length - 1];
     const prev = chartData[chartData.length - 2];
-    const slope = last.moisture - prev.moisture;
+    const slope = (last.value || 0) - (prev.value || 0);
     
     // Add 5 future points
     for (let i = 1; i <= 5; i++) {
         chartData.push({
             time: `+${i * 5}s`,
-            moisture: null as any, // Use any to bypass strict type check for chart gap
-            predicted: parseFloat(Math.max(0, last.moisture + (slope * i)).toFixed(1))
+            value: null as any, // Use any to bypass strict type check for chart gap
+            predicted: parseFloat(((last.value || 0) + (slope * i)).toFixed(2))
         });
     }
   }
 
+  const axisColor = isDarkMode ? '#94a3b8' : '#64748b';
+  const gridColor = isDarkMode ? '#334155' : '#e2e8f0';
+  const tooltipBg = isDarkMode ? '#1e293b' : '#fff';
+  const tooltipBorder = isDarkMode ? '#334155' : '#e2e8f0';
+  const tooltipText = isDarkMode ? '#f8fafc' : '#1e293b';
+
   return (
-    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-      <div className="flex justify-between items-center mb-6">
-        <h3 className="text-lg font-semibold text-slate-800">Soil Moisture Trends & Prediction</h3>
-        <div className="flex gap-4 text-sm">
-          <div className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full bg-emerald-500"></span>
-            <span className="text-slate-600">Historical</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full bg-indigo-500"></span>
-            <span className="text-slate-600">AI Predicted</span>
-          </div>
-        </div>
-      </div>
-      
-      <div className="h-64 w-full">
+    <div className="h-80 w-full">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={chartData}>
+          <AreaChart data={chartData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
             <defs>
-              <linearGradient id="colorMoisture" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#10b981" stopOpacity={0.2}/>
-                <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-              </linearGradient>
-              <linearGradient id="colorPredicted" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#6366f1" stopOpacity={0.2}/>
-                <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+              <linearGradient id={`color${dataKey}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor={color} stopOpacity={0.2}/>
+                <stop offset="95%" stopColor={color} stopOpacity={0}/>
               </linearGradient>
             </defs>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-            <XAxis dataKey="time" tick={{fontSize: 12, fill: '#64748b'}} axisLine={false} tickLine={false} />
-            <YAxis domain={[0, 100]} tick={{fontSize: 12, fill: '#64748b'}} axisLine={false} tickLine={false} unit="%" />
-            <Tooltip 
-              contentStyle={{backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}}
-              itemStyle={{fontSize: '14px', fontWeight: 500}}
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
+            <XAxis dataKey="time" tick={{fontSize: 12, fill: axisColor}} axisLine={false} tickLine={false} />
+            <YAxis 
+                domain={['auto', 'auto']} 
+                tick={{fontSize: 12, fill: axisColor}} 
+                axisLine={false} 
+                tickLine={false} 
+                unit={unit} 
+                width={40}
             />
-            <ReferenceLine y={30} label="Dry Threshold" stroke="red" strokeDasharray="3 3" />
+            <Tooltip 
+              contentStyle={{backgroundColor: tooltipBg, borderRadius: '8px', border: `1px solid ${tooltipBorder}`, boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', color: tooltipText}}
+              itemStyle={{fontSize: '14px', fontWeight: 500, color: color}}
+              formatter={(value: number) => [`${value} ${unit}`, title]}
+            />
+            {threshold && (
+                <ReferenceLine y={threshold} label={{ value: "Threshold", fill: "#ef4444", fontSize: 12 }} stroke="#ef4444" strokeDasharray="3 3" />
+            )}
             <Area 
               type="monotone" 
-              dataKey="moisture" 
-              stroke="#10b981" 
+              dataKey="value" 
+              stroke={color} 
               strokeWidth={2} 
               fillOpacity={1} 
-              fill="url(#colorMoisture)" 
-              name="Moisture"
+              fill={`url(#color${dataKey})`} 
+              name={title}
               connectNulls={false}
             />
             <Area 
               type="monotone" 
               dataKey="predicted" 
-              stroke="#6366f1" 
+              stroke={color} 
               strokeWidth={2} 
               strokeDasharray="5 5"
               fillOpacity={1} 
-              fill="url(#colorPredicted)" 
+              fill={`url(#color${dataKey})`} 
               name="Predicted"
             />
           </AreaChart>
         </ResponsiveContainer>
-      </div>
     </div>
   );
 };
