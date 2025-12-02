@@ -420,8 +420,8 @@ const SystemDemoCarousel = () => {
                      <div className="h-full bg-emerald-500 w-[98%] animate-pulse"></div>
                   </div>
                   <div className="bg-emerald-950/50 border border-emerald-500/30 p-3 rounded text-emerald-400 text-xs">
-                     > CHLOROPHYLL: OPTIMAL<br/>
-                     > STRESS: NONE DETECTED
+                     {`> CHLOROPHYLL: OPTIMAL`}<br/>
+                     {`> STRESS: NONE DETECTED`}
                   </div>
                </div>
             </div>
@@ -452,9 +452,9 @@ const SystemDemoCarousel = () => {
                
                <div className="w-full space-y-2 font-mono">
                   <div className="bg-amber-950/50 border border-amber-500/30 p-3 rounded text-amber-400 text-xs">
-                     > ALERT: MOTION DETECTED<br/>
-                     > CLASS: HUMAN_MALE<br/>
-                     > ZONE: PERIMETER_NORTH
+                     {`> ALERT: MOTION DETECTED`}<br/>
+                     {`> CLASS: HUMAN_MALE`}<br/>
+                     {`> ZONE: PERIMETER_NORTH`}
                   </div>
                </div>
             </div>
