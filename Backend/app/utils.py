@@ -25,4 +25,3 @@ if __name__=='__main__':
 
     mqtt_client.connect(mqtt_addr, 1883)
     mqtt_client.loop_forever()
-
