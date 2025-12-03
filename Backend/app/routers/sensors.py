@@ -46,6 +46,24 @@ async def get_sensor_readings(
     return readings
 
 
+@router.get("/all", response_model=List[SensorReadingResponse])
+async def get_all_sensor_readings(
+    limit: int = Query(1000, ge=1, le=5000),
+    zone: str = Query(None, description="Filter by zone"),
+    db: Session = Depends(get_db)
+):
+    """Get all sensor readings regardless of time (up to limit)."""
+    query = db.query(SensorReading)
+    
+    # Filter by zone if provided
+    if zone:
+        query = query.filter(SensorReading.zone == zone)
+    
+    # Order by timestamp descending and apply limit
+    readings = query.order_by(SensorReading.timestamp.desc()).limit(limit).all()
+    return readings
+
+
 @router.get("/latest", response_model=SensorReadingResponse)
 async def get_latest_reading(
     zone: str = Query("main", description="Zone to get latest reading from"),

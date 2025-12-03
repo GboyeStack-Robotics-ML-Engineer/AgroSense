@@ -4,6 +4,7 @@ from typing import Optional
 
 
 class SensorReadingCreate(BaseModel):
+    sensor_id: int = Field(1, ge=1, description="Hardware sensor ID")
     moisture: float = Field(..., ge=0, le=100, description="Soil moisture percentage")
     temperature: float = Field(..., ge=-50, le=100, description="Temperature in Celsius")
     humidity: float = Field(..., ge=0, le=100, description="Humidity percentage")
@@ -14,6 +15,7 @@ class SensorReadingCreate(BaseModel):
 class SensorReadingResponse(BaseModel):
     id: int
     timestamp: datetime
+    sensor_id: int
     moisture: float
     temperature: float
     humidity: float

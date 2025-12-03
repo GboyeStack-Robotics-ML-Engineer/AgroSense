@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .database import engine, Base
 from .routers import sensors, alerts, ai_analysis, websocket
-
+from .services.mqtt_listener import mqtt_listener
 # Create database tables
 Base.metadata.create_all(bind=engine)
 
@@ -29,7 +29,9 @@ app.include_router(ai_analysis.router, prefix="/api/ai", tags=["AI Analysis"])
 app.include_router(websocket.router, prefix="/ws", tags=["WebSocket"])
 
 
-
+@app.on_event("startup")
+async def startup_event() -> None:
+    mqtt_listener.start()
 
 @app.get("/")
 async def root():

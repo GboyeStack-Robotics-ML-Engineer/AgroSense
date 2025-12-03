@@ -9,6 +9,9 @@ class SensorReading(Base):
     id = Column(Integer, primary_key=True, index=True)
     timestamp = Column(DateTime, server_default=func.now(), index=True)
     
+    # Sensor identification
+    sensor_id = Column(Integer, nullable=False, default=1, index=True)
+    
     # Soil metrics
     moisture = Column(Float, nullable=False)
     temperature = Column(Float, nullable=False)

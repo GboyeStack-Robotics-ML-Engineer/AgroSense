@@ -26,6 +26,7 @@ interface DashboardHomeProps {
   alerts: Alert[];
   onViewChange: (view: View) => void;
   isDarkMode?: boolean;
+  selectedSensorId?: number | null;
 }
 
 const SENSORS = [
@@ -35,7 +36,7 @@ const SENSORS = [
   { key: 'ph', label: 'Soil pH', unit: '', color: '#8b5cf6' }
 ];
 
-const DashboardHome: React.FC<DashboardHomeProps> = ({ data, history, alerts, onViewChange, isDarkMode }) => {
+const DashboardHome: React.FC<DashboardHomeProps> = ({ data, history, alerts, onViewChange, isDarkMode, selectedSensorId = null }) => {
   const [isAlertsOpen, setIsAlertsOpen] = useState(true);
   const [sensorIndex, setSensorIndex] = useState(0);
 
@@ -149,13 +150,15 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ data, history, alerts, on
          {/* Chart Body */}
          <div className="p-4">
              <SensorChart 
+                key={`${currentSensor.key}-${selectedSensorId}`}  // Force re-render when metric or sensor changes
                 data={history} 
                 dataKey={currentSensor.key as any} 
                 title={currentSensor.label}
                 color={currentSensor.color}
                 unit={currentSensor.unit}
                 threshold={currentSensor.threshold}
-                isDarkMode={isDarkMode} 
+                isDarkMode={isDarkMode}
+                selectedSensorId={selectedSensorId}
             />
          </div>
       </div>

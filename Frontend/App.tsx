@@ -16,7 +16,6 @@ import {
   Moon
 } from 'lucide-react';
 import { SensorData, Alert, View } from './types';
-import { generateInitialHistory, generateNextReading } from './services/mockData';
 
 // Sub-pages
 import DashboardHome from './pages/DashboardHome';
@@ -32,41 +31,114 @@ const App: React.FC = () => {
   const [sensorHistory, setSensorHistory] = useState<SensorData[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [isCollapsed, setIsCollapsed] = useState(false); // Desktop sidebar collapse state
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [selectedSensorId, setSelectedSensorId] = useState<number | null>(null); // null = all sensors
+  const [availableSensors, setAvailableSensors] = useState<number[]>([]);
 
-  // Init Data
+  // Extract unique sensor IDs from data
   useEffect(() => {
-    setSensorHistory(generateInitialHistory());
-    // Check system preference
+    const sensorIds = Array.from(new Set(
+      sensorHistory
+        .map(d => d.sensorId)
+        .filter((id): id is number => id !== undefined && id !== null)
+    )).sort((a, b) => a - b);
+    
+    setAvailableSensors(sensorIds);
+  }, [sensorHistory]);
+
+  // WebSocket connection for real-time data
+  useEffect(() => {
+    const ws = new WebSocket('ws://localhost:8000/ws/sensor-data');
+    
+    ws.onopen = () => {
+      console.log('🔌 Connected to backend WebSocket');
+      setIsOnline(true);
+    };
+    
+    ws.onmessage = (event) => {
+      console.log('📩 WebSocket message received:', event.data);
+      const message = JSON.parse(event.data);
+      console.log('📊 Parsed message:', message);
+      
+      if (message.type === 'sensor_reading') {
+        const reading: SensorData = {
+          id: message.data.id,
+          sensorId: message.data.sensorId || 1, // Hardware sensor ID
+          moisture: message.data.moisture,
+          temperature: message.data.temperature,
+          humidity: message.data.humidity,
+          ph: message.data.ph,
+          timestamp: new Date(message.data.timestamp).getTime(),
+          zone: message.data.zone
+        };
+        
+        console.log('✅ Adding sensor reading to history:', reading);
+        
+        setSensorHistory(prev => {
+          const newHistory = [...prev, reading].slice(-200); // Keep last 200 readings
+          console.log(`📈 History updated, total readings: ${newHistory.length}`);
+          return newHistory;
+        });
+        
+        checkAlerts(reading);
+      }
+    };
+    
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+      setIsOnline(false);
+    };
+    
+    ws.onclose = () => {
+      console.log('❌ Disconnected from backend');
+      setIsOnline(false);
+    };
+    
+    return () => ws.close();
+  }, [soundEnabled, showLandingPage]);
+
+  // Fetch initial historical data from backend (all stored readings)
+  useEffect(() => {
+    fetch('http://localhost:8000/api/sensors/all?limit=1000')  // Fetch all stored readings
+      .then(res => {
+        if (!res.ok) throw new Error('Backend not available');
+        return res.json();
+      })
+      .then((data: any[]) => {
+        console.log(`📊 Fetched ${data.length} historical readings from database`);
+        const readings: SensorData[] = data.map(d => ({
+          id: d.id,
+          sensorId: d.sensor_id || 1, // Hardware sensor ID from database
+          moisture: d.moisture,
+          temperature: d.temperature,
+          humidity: d.humidity,
+          ph: d.ph,
+          timestamp: new Date(d.timestamp).getTime(),
+          zone: d.zone
+        })).reverse();  // Oldest first for chart display
+        
+        if (readings.length > 0) {
+          setSensorHistory(readings);
+          console.log(`✅ Loaded ${readings.length} readings into chart`);
+        } else {
+          console.log('ℹ️ No historical readings in database yet');
+        }
+      })
+      .catch(err => {
+        console.error('Failed to fetch initial sensor data:', err);
+        // Don't set offline just because fetch failed - WebSocket might still work
+      });
+
+    // Check system preference for dark mode
     if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
       setIsDarkMode(true);
       document.documentElement.classList.add('dark');
     }
   }, []);
-
-  // Data Loop
-  useEffect(() => {
-    // Keep data running in background even if on landing page, or pause it.
-    // Let's keep it running so graphs are full when entered.
-    const interval = setInterval(() => {
-      setSensorHistory(prev => {
-        const last = prev[prev.length - 1];
-        const next = generateNextReading(last);
-        const newHistory = [...prev.slice(1), next];
-        
-        // Check for alerts
-        checkAlerts(next);
-        
-        return newHistory;
-      });
-    }, 3000); // 3 seconds tick
-
-    return () => clearInterval(interval);
-  }, [soundEnabled]);
 
   const checkAlerts = (data: SensorData) => {
     const newAlerts: Alert[] = [];
@@ -112,26 +184,45 @@ const App: React.FC = () => {
   };
 
   const renderContent = () => {
-    // Updated fallback object to include 'ph'
+    // Updated fallback object
     const latestData = sensorHistory[sensorHistory.length - 1] || { 
       moisture: 0, 
       temperature: 0, 
       humidity: 0, 
       ph: 7.0, 
-      timestamp: 0 
+      timestamp: 0,
+      sensorId: undefined
     };
 
     switch (currentView) {
       case 'dashboard':
-        return <DashboardHome data={latestData} history={sensorHistory} alerts={alerts} onViewChange={setCurrentView} isDarkMode={isDarkMode} />;
+        return <DashboardHome 
+          data={latestData} 
+          history={sensorHistory} 
+          alerts={alerts} 
+          onViewChange={setCurrentView} 
+          isDarkMode={isDarkMode}
+          selectedSensorId={selectedSensorId}
+        />;
       case 'soil':
-        return <SoilMonitor history={sensorHistory} isDarkMode={isDarkMode} />;
+        return <SoilMonitor 
+          history={sensorHistory} 
+          isDarkMode={isDarkMode}
+          selectedSensorId={selectedSensorId}
+        />;
       case 'health':
         return <LeafHealth />;
       case 'security':
         return <SecurityMonitor />;
       default:
-        return <DashboardHome data={latestData} history={sensorHistory} alerts={alerts} onViewChange={setCurrentView} isDarkMode={isDarkMode} />;
+        return <DashboardHome 
+          data={latestData} 
+          history={sensorHistory} 
+          alerts={alerts} 
+          onViewChange={setCurrentView} 
+          isDarkMode={isDarkMode}
+          selectedSensorId={selectedSensorId}
+        />;
     }
   };
 
@@ -259,6 +350,24 @@ const App: React.FC = () => {
               <Menu className="w-6 h-6" />
             </button>
             <h2 className="text-lg font-medium text-slate-800 dark:text-slate-100 capitalize">{currentView.replace('-', ' ')}</h2>
+            
+            {/* Sensor Selector Dropdown */}
+            {(currentView === 'dashboard' || currentView === 'soil') && (
+              <div className="ml-4">
+                <select
+                  value={selectedSensorId === null ? 'all' : selectedSensorId}
+                  onChange={(e) => setSelectedSensorId(e.target.value === 'all' ? null : parseInt(e.target.value))}
+                  className="px-3 py-1.5 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400"
+                >
+                  <option value="all">All Sensors (Average)</option>
+                  {availableSensors.map(sensorId => (
+                    <option key={sensorId} value={sensorId}>
+                      Sensor #{sensorId}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-4">

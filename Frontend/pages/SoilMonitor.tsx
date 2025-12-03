@@ -7,12 +7,14 @@ import { Sparkles, Send, Loader2 } from 'lucide-react';
 interface SoilMonitorProps {
   history: SensorData[];
   isDarkMode?: boolean;
+  selectedSensorId?: number | null;
 }
 
-const SoilMonitor: React.FC<SoilMonitorProps> = ({ history, isDarkMode }) => {
+const SoilMonitor: React.FC<SoilMonitorProps> = ({ history, isDarkMode, selectedSensorId = null }) => {
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<'moisture' | 'temperature' | 'humidity' | 'ph'>('moisture');
   
   const latest = history[history.length - 1] || { moisture: 0, temperature: 0, humidity: 0, ph: 7.0, timestamp: 0 };
 
@@ -27,6 +29,15 @@ const SoilMonitor: React.FC<SoilMonitorProps> = ({ history, isDarkMode }) => {
     setQuestion('');
   };
 
+  const tabs = [
+    { key: 'moisture' as const, label: 'Moisture', color: '#10b981', unit: '%', threshold: 30 },
+    { key: 'temperature' as const, label: 'Temperature', color: '#f59e0b', unit: '°C', threshold: undefined },
+    { key: 'humidity' as const, label: 'Humidity', color: '#3b82f6', unit: '%', threshold: undefined },
+    { key: 'ph' as const, label: 'pH Level', color: '#8b5cf6', unit: '', threshold: undefined }
+  ];
+
+  const activeTabConfig = tabs.find(t => t.key === activeTab)!;
+
   return (
     <div className="space-y-6">
       <header>
@@ -34,19 +45,39 @@ const SoilMonitor: React.FC<SoilMonitorProps> = ({ history, isDarkMode }) => {
         <p className="text-slate-500 dark:text-slate-400">Detailed analytics and AI advisory.</p>
       </header>
 
+      {/* Metric Tabs */}
+      <div className="flex gap-2 overflow-x-auto pb-2">
+        {tabs.map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={`px-4 py-2 rounded-lg font-medium text-sm transition-all whitespace-nowrap ${
+              activeTab === tab.key
+                ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm border-2'
+                : 'bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-2 border-transparent hover:border-slate-300 dark:hover:border-slate-700'
+            }`}
+            style={{ borderColor: activeTab === tab.key ? tab.color : undefined }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-4">
         <div className="mb-4 flex items-center justify-between">
-             <h3 className="font-semibold text-slate-800 dark:text-white">Real-time Moisture Trends</h3>
+             <h3 className="font-semibold text-slate-800 dark:text-white">Real-time {activeTabConfig.label} Trends</h3>
              <span className="text-xs px-2 py-1 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400 rounded-full font-medium">Live</span>
         </div>
         <SensorChart 
+            key={activeTab}  // Force re-render when tab changes
             data={history} 
-            dataKey="moisture" 
-            title="Soil Moisture" 
-            color="#10b981" 
-            unit="%" 
+            dataKey={activeTab} 
+            title={activeTabConfig.label} 
+            color={activeTabConfig.color} 
+            unit={activeTabConfig.unit} 
             isDarkMode={isDarkMode}
-            threshold={30}
+            threshold={activeTabConfig.threshold}
+            selectedSensorId={selectedSensorId}
         />
       </div>
 

@@ -5,11 +5,14 @@ export enum SensorStatus {
 }
 
 export interface SensorData {
+  id?: number; // Database ID
+  sensorId?: number; // Sensor set identifier from hardware
   timestamp: number;
   moisture: number; // 0-100%
   temperature: number; // Celsius
   humidity: number; // 0-100%
   ph: number; // 0-14
+  zone?: string; // Sensor zone/location
 }
 
 export interface Alert {
