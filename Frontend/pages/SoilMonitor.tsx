@@ -4,19 +4,39 @@ import { SensorChart } from '../components/MoistureChart';
 import { getFarmingAdvice } from '../services/geminiService';
 import { Sparkles, Send, Loader2 } from 'lucide-react';
 
+interface SensorStatus {
+  online: boolean;
+  lastSeen: number;
+}
+
 interface SoilMonitorProps {
   history: SensorData[];
   isDarkMode?: boolean;
   selectedSensorId?: number | null;
+  sensorStatuses?: Record<number, SensorStatus>;
 }
 
-const SoilMonitor: React.FC<SoilMonitorProps> = ({ history, isDarkMode, selectedSensorId = null }) => {
+const SoilMonitor: React.FC<SoilMonitorProps> = ({ history, isDarkMode, selectedSensorId = null, sensorStatuses = {} }) => {
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'moisture' | 'temperature' | 'humidity' | 'ph'>('moisture');
   
-  const latest = history[history.length - 1] || { moisture: 0, temperature: 0, humidity: 0, ph: 7.0, timestamp: 0 };
+  // Get latest data for the selected sensor
+  const getLatestForSelectedSensor = () => {
+    if (selectedSensorId === null) {
+      return history[history.length - 1] || { moisture: 0, temperature: 0, humidity: 0, ph: 7.0, timestamp: 0 };
+    }
+    const sensorReadings = history.filter(d => d.sensorId === selectedSensorId);
+    return sensorReadings[sensorReadings.length - 1] || { moisture: 0, temperature: 0, humidity: 0, ph: 7.0, timestamp: 0 };
+  };
+  
+  const latest = getLatestForSelectedSensor();
+
+  // Check if selected sensor is online
+  const isSensorOnline = selectedSensorId === null 
+    ? Object.values(sensorStatuses).some(s => s.online) 
+    : sensorStatuses[selectedSensorId]?.online ?? false;
 
   const handleAskAI = async () => {
     if (!question.trim()) return;
@@ -66,7 +86,14 @@ const SoilMonitor: React.FC<SoilMonitorProps> = ({ history, isDarkMode, selected
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-4">
         <div className="mb-4 flex items-center justify-between">
              <h3 className="font-semibold text-slate-800 dark:text-white">Real-time {activeTabConfig.label} Trends</h3>
-             <span className="text-xs px-2 py-1 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400 rounded-full font-medium">Live</span>
+             <span className={`text-xs px-2 py-1 rounded-full font-medium flex items-center gap-1.5 ${
+               isSensorOnline 
+                 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400' 
+                 : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+             }`}>
+               <span className={`w-1.5 h-1.5 rounded-full ${isSensorOnline ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`}></span>
+               {isSensorOnline ? 'Live' : 'Historical'}
+             </span>
         </div>
         <SensorChart 
             key={activeTab}  // Force re-render when tab changes
@@ -78,6 +105,7 @@ const SoilMonitor: React.FC<SoilMonitorProps> = ({ history, isDarkMode, selected
             isDarkMode={isDarkMode}
             threshold={activeTabConfig.threshold}
             selectedSensorId={selectedSensorId}
+            isLive={isSensorOnline}
         />
       </div>
 

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, 
   ResponsiveContainer, ReferenceLine, Line, ComposedChart 
@@ -19,6 +19,7 @@ interface SensorChartProps {
   isDarkMode?: boolean;
   threshold?: number;
   selectedSensorId?: number | null;
+  isLive?: boolean;  // Whether the sensor is currently online and streaming data
 }
 
 type TimeRange = '5m' | '15m' | '30m' | '1h' | 'all';
@@ -31,7 +32,8 @@ export const SensorChart: React.FC<SensorChartProps> = ({
   unit, 
   isDarkMode = false,
   threshold,
-  selectedSensorId = null
+  selectedSensorId = null,
+  isLive = false
 }) => {
   const [timeRange, setTimeRange] = useState<TimeRange>('all');
   const [isExpanded, setIsExpanded] = useState(false);
@@ -45,6 +47,21 @@ export const SensorChart: React.FC<SensorChartProps> = ({
   
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const lastPanX = useRef(0);
+  
+  // Cache for offline sensor data - when sensor goes offline, we freeze its data
+  const cachedOfflineData = useRef<SensorData[]>([]);
+  const wasLive = useRef(isLive);
+  const lastSelectedSensorId = useRef(selectedSensorId);
+
+  // Clear cache when switching sensors
+  useEffect(() => {
+    if (lastSelectedSensorId.current !== selectedSensorId) {
+      cachedOfflineData.current = [];
+      wasLive.current = isLive;
+      lastSelectedSensorId.current = selectedSensorId;
+      console.log(`🔄 Cleared cache - switched to sensor ${selectedSensorId}`);
+    }
+  }, [selectedSensorId, isLive]);
 
   // Filter data based on sensor selection
   const getSensorFilteredData = () => {
@@ -77,9 +94,30 @@ export const SensorChart: React.FC<SensorChartProps> = ({
     return data.filter(d => d.sensorId === selectedSensorId);
   };
 
+  // Get the data to use - either live data or cached offline data
+  const getDataToUse = (): SensorData[] => {
+    const currentData = getSensorFilteredData();
+    
+    // If sensor just went offline, cache the current data
+    if (wasLive.current && !isLive) {
+      cachedOfflineData.current = [...currentData];
+      console.log(`📦 Cached ${currentData.length} readings for offline sensor ${selectedSensorId}`);
+    }
+    
+    // Update the previous live state
+    wasLive.current = isLive;
+    
+    // If sensor is offline, use cached data; otherwise use live data
+    if (!isLive && cachedOfflineData.current.length > 0) {
+      return cachedOfflineData.current;
+    }
+    
+    return currentData;
+  };
+
   // Filter data based on time range
   const getFilteredData = () => {
-    const sensorFiltered = getSensorFilteredData();
+    const sensorFiltered = getDataToUse();
     
     if (timeRange === 'all') return sensorFiltered;
     
@@ -256,7 +294,8 @@ export const SensorChart: React.FC<SensorChartProps> = ({
           stroke={color} 
           strokeWidth={2} 
           fillOpacity={1} 
-          fill={`url(#${gradientId})`} 
+          fill={`url(#${gradientId})`}
+          isAnimationActive={isLive}
         />
       </AreaChart>
     </ResponsiveContainer>
@@ -442,9 +481,11 @@ export const SensorChart: React.FC<SensorChartProps> = ({
 
   return (
     <>
-      <div className="h-80 w-full">
+      <div className="h-80 w-full flex flex-col">
         {renderSimpleToolbar()}
-        {renderSimpleChart()}
+        <div className="flex-1 min-h-0">
+          {renderSimpleChart()}
+        </div>
       </div>
 
       {isExpanded && (

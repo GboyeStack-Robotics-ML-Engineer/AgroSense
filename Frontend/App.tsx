@@ -24,6 +24,12 @@ import LeafHealth from './pages/LeafHealth';
 import SecurityMonitor from './pages/SecurityMonitor';
 import LandingPage from './pages/LandingPage';
 
+// Sensor status type
+interface SensorStatus {
+  online: boolean;
+  lastSeen: number; // timestamp
+}
+
 const App: React.FC = () => {
   // State
   const [showLandingPage, setShowLandingPage] = useState(true);
@@ -38,14 +44,15 @@ const App: React.FC = () => {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [selectedSensorId, setSelectedSensorId] = useState<number | null>(null); // null = all sensors
   const [availableSensors, setAvailableSensors] = useState<number[]>([]);
+  const [sensorStatuses, setSensorStatuses] = useState<Record<number, SensorStatus>>({}); // Track online/offline status
 
   // Extract unique sensor IDs from data
   useEffect(() => {
-    const sensorIds = Array.from(new Set(
-      sensorHistory
-        .map(d => d.sensorId)
-        .filter((id): id is number => id !== undefined && id !== null)
-    )).sort((a, b) => a - b);
+    const ids = sensorHistory
+      .map(d => d.sensorId)
+      .filter((id): id is number => id !== undefined && id !== null);
+    const uniqueIds = new Set<number>(ids);
+    const sensorIds = Array.from(uniqueIds).sort((a, b) => a - b);
     
     setAvailableSensors(sensorIds);
   }, [sensorHistory]);
@@ -64,10 +71,59 @@ const App: React.FC = () => {
       const message = JSON.parse(event.data);
       console.log('📊 Parsed message:', message);
       
+      // Handle initial sensor status sync
+      if (message.type === 'sensor_status_init') {
+        console.log('📡 Received initial sensor statuses:', message.data);
+        const statuses: Record<number, SensorStatus> = {};
+        for (const [sensorId, status] of Object.entries(message.data)) {
+          const s = status as { online: boolean; lastSeen: string };
+          statuses[parseInt(sensorId)] = {
+            online: s.online,
+            lastSeen: new Date(s.lastSeen).getTime()
+          };
+        }
+        setSensorStatuses(statuses);
+      }
+      
+      // Handle sensor status changes (online/offline)
+      if (message.type === 'sensor_status') {
+        const { sensorId, online, lastSeen } = message.data;
+        console.log(`📡 Sensor ${sensorId} is now ${online ? 'ONLINE' : 'OFFLINE'}`);
+        setSensorStatuses(prev => ({
+          ...prev,
+          [sensorId]: {
+            online,
+            lastSeen: new Date(lastSeen).getTime()
+          }
+        }));
+        
+        // Show alert when sensor goes offline
+        if (!online) {
+          setAlerts(prev => [{
+            id: `sensor-offline-${sensorId}-${Date.now()}`,
+            type: 'moisture',
+            message: `Sensor #${sensorId} has disconnected`,
+            timestamp: Date.now(),
+            severity: 'warning'
+          }, ...prev].slice(0, 20));
+        }
+      }
+      
       if (message.type === 'sensor_reading') {
+        const sensorId = message.data.sensorId || 1;
+        
+        // Update sensor status to online when we receive data
+        setSensorStatuses(prev => ({
+          ...prev,
+          [sensorId]: {
+            online: true,
+            lastSeen: Date.now()
+          }
+        }));
+        
         const reading: SensorData = {
           id: message.data.id,
-          sensorId: message.data.sensorId || 1, // Hardware sensor ID
+          sensorId: sensorId, // Hardware sensor ID
           moisture: message.data.moisture,
           temperature: message.data.temperature,
           humidity: message.data.humidity,
@@ -184,15 +240,33 @@ const App: React.FC = () => {
   };
 
   const renderContent = () => {
-    // Updated fallback object
-    const latestData = sensorHistory[sensorHistory.length - 1] || { 
-      moisture: 0, 
-      temperature: 0, 
-      humidity: 0, 
-      ph: 7.0, 
-      timestamp: 0,
-      sensorId: undefined
+    // Get latest data for the selected sensor (or most recent if "all" is selected)
+    const getLatestDataForSensor = () => {
+      if (selectedSensorId === null) {
+        // Return the most recent reading from any sensor
+        return sensorHistory[sensorHistory.length - 1] || { 
+          moisture: 0, 
+          temperature: 0, 
+          humidity: 0, 
+          ph: 7.0, 
+          timestamp: 0,
+          sensorId: undefined
+        };
+      }
+      
+      // Filter readings for the selected sensor and get the latest one
+      const sensorReadings = sensorHistory.filter(d => d.sensorId === selectedSensorId);
+      return sensorReadings[sensorReadings.length - 1] || { 
+        moisture: 0, 
+        temperature: 0, 
+        humidity: 0, 
+        ph: 7.0, 
+        timestamp: 0,
+        sensorId: selectedSensorId
+      };
     };
+    
+    const latestData = getLatestDataForSensor();
 
     switch (currentView) {
       case 'dashboard':
@@ -203,12 +277,14 @@ const App: React.FC = () => {
           onViewChange={setCurrentView} 
           isDarkMode={isDarkMode}
           selectedSensorId={selectedSensorId}
+          sensorStatuses={sensorStatuses}
         />;
       case 'soil':
         return <SoilMonitor 
           history={sensorHistory} 
           isDarkMode={isDarkMode}
           selectedSensorId={selectedSensorId}
+          sensorStatuses={sensorStatuses}
         />;
       case 'health':
         return <LeafHealth />;
@@ -222,6 +298,7 @@ const App: React.FC = () => {
           onViewChange={setCurrentView} 
           isDarkMode={isDarkMode}
           selectedSensorId={selectedSensorId}
+          sensorStatuses={sensorStatuses}
         />;
     }
   };
@@ -353,19 +430,36 @@ const App: React.FC = () => {
             
             {/* Sensor Selector Dropdown */}
             {(currentView === 'dashboard' || currentView === 'soil') && (
-              <div className="ml-4">
+              <div className="ml-4 flex items-center gap-2">
                 <select
                   value={selectedSensorId === null ? 'all' : selectedSensorId}
                   onChange={(e) => setSelectedSensorId(e.target.value === 'all' ? null : parseInt(e.target.value))}
                   className="px-3 py-1.5 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400"
                 >
                   <option value="all">All Sensors (Average)</option>
-                  {availableSensors.map(sensorId => (
-                    <option key={sensorId} value={sensorId}>
-                      Sensor #{sensorId}
-                    </option>
-                  ))}
+                  {availableSensors.map(sensorId => {
+                    const status = sensorStatuses[sensorId];
+                    const isOnline = status?.online ?? false;
+                    return (
+                      <option key={sensorId} value={sensorId}>
+                        Sensor #{sensorId} {isOnline ? '🟢' : '🔴'}
+                      </option>
+                    );
+                  })}
                 </select>
+                {/* Show selected sensor status */}
+                {selectedSensorId !== null && (
+                  <div className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium ${
+                    sensorStatuses[selectedSensorId]?.online 
+                      ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' 
+                      : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
+                  }`}>
+                    <span className={`w-2 h-2 rounded-full ${
+                      sensorStatuses[selectedSensorId]?.online ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'
+                    }`}></span>
+                    {sensorStatuses[selectedSensorId]?.online ? 'Live' : 'Offline'}
+                  </div>
+                )}
               </div>
             )}
           </div>

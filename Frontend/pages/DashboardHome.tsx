@@ -20,6 +20,11 @@ import { StatCard } from '../components/StatCard';
 import { SensorChart } from '../components/MoistureChart';
 import { mockPlantImages, mockMotionEvents } from '../services/mockData';
 
+interface SensorStatus {
+  online: boolean;
+  lastSeen: number;
+}
+
 interface DashboardHomeProps {
   data: SensorData;
   history: SensorData[];
@@ -27,6 +32,7 @@ interface DashboardHomeProps {
   onViewChange: (view: View) => void;
   isDarkMode?: boolean;
   selectedSensorId?: number | null;
+  sensorStatuses?: Record<number, SensorStatus>;
 }
 
 const SENSORS = [
@@ -36,7 +42,7 @@ const SENSORS = [
   { key: 'ph', label: 'Soil pH', unit: '', color: '#8b5cf6' }
 ];
 
-const DashboardHome: React.FC<DashboardHomeProps> = ({ data, history, alerts, onViewChange, isDarkMode, selectedSensorId = null }) => {
+const DashboardHome: React.FC<DashboardHomeProps> = ({ data, history, alerts, onViewChange, isDarkMode, selectedSensorId = null, sensorStatuses = {} }) => {
   const [isAlertsOpen, setIsAlertsOpen] = useState(true);
   const [sensorIndex, setSensorIndex] = useState(0);
 
@@ -44,6 +50,11 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ data, history, alerts, on
   const phStatus = data.ph < 5.5 || data.ph > 7.5 ? 'warning' : 'normal';
 
   const currentSensor = SENSORS[sensorIndex];
+  
+  // Check if selected sensor is online
+  const isSensorOnline = selectedSensorId === null 
+    ? Object.values(sensorStatuses).some(s => s.online) 
+    : sensorStatuses[selectedSensorId]?.online ?? false;
   
   // Get latest preview data
   const latestLeaf = mockPlantImages[0];
@@ -125,6 +136,17 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ data, history, alerts, on
             <div className="text-center">
                 <h3 className="text-lg font-semibold text-slate-800 dark:text-white flex items-center justify-center gap-2">
                     {currentSensor.label} Trends & Prediction
+                    {/* Live/Offline indicator */}
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                      isSensorOnline 
+                        ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' 
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                    }`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${
+                        isSensorOnline ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
+                      }`}></span>
+                      {isSensorOnline ? 'Live' : 'Historical'}
+                    </span>
                 </h3>
                 <div className="flex items-center justify-center gap-4 text-xs mt-1">
                     <div className="flex items-center gap-1">
@@ -159,6 +181,7 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ data, history, alerts, on
                 threshold={currentSensor.threshold}
                 isDarkMode={isDarkMode}
                 selectedSensorId={selectedSensorId}
+                isLive={isSensorOnline}
             />
          </div>
       </div>
