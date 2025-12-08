@@ -277,6 +277,22 @@ const App: React.FC = () => {
     }
   };
 
+  // Stop any currently playing speech
+  const stopSpeaking = () => {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+  };
+
+  // Toggle sound and stop any current speech when muting
+  const toggleSound = () => {
+    if (soundEnabled) {
+      // When muting, stop any current speech
+      stopSpeaking();
+    }
+    setSoundEnabled(!soundEnabled);
+  };
+
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
   const toggleDarkMode = () => {
@@ -448,7 +464,7 @@ const App: React.FC = () => {
                 <button onClick={toggleDarkMode} className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200" title="Toggle Theme">
                     {isDarkMode ? <Moon className="w-4 h-4 flex-shrink-0" /> : <Sun className="w-4 h-4 flex-shrink-0" />}
                 </button>
-                <button onClick={() => setSoundEnabled(!soundEnabled)} className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200" title={soundEnabled ? "Mute" : "Unmute"}>
+                <button onClick={toggleSound} className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200" title={soundEnabled ? "Mute" : "Unmute"}>
                     {soundEnabled ? <Volume2 className="w-4 h-4 flex-shrink-0"/> : <VolumeX className="w-4 h-4 flex-shrink-0"/>}
                 </button>
               </div>
