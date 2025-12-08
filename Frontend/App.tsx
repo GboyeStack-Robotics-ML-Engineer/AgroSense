@@ -30,6 +30,19 @@ interface SensorStatus {
   lastSeen: number; // timestamp
 }
 
+// Get backend URL dynamically based on how the user accesses the frontend
+const getBackendUrl = () => {
+  const host = window.location.hostname;
+  const backendPort = 8000;
+  
+  return {
+    ws: `ws://${host}:${backendPort}`,
+    http: `http://${host}:${backendPort}`
+  };
+};
+
+const backendUrl = getBackendUrl();
+
 const App: React.FC = () => {
   // State
   const [showLandingPage, setShowLandingPage] = useState(true);
@@ -59,7 +72,9 @@ const App: React.FC = () => {
 
   // WebSocket connection for real-time data
   useEffect(() => {
-    const ws = new WebSocket('ws://localhost:8000/ws/sensor-data');
+    const wsUrl = `${backendUrl.ws}/ws/sensor-data`;
+    console.log(`🔌 Connecting to WebSocket: ${wsUrl}`);
+    const ws = new WebSocket(wsUrl);
     
     ws.onopen = () => {
       console.log('🔌 Connected to backend WebSocket');
@@ -159,7 +174,10 @@ const App: React.FC = () => {
 
   // Fetch initial historical data from backend (all stored readings)
   useEffect(() => {
-    fetch('http://localhost:8000/api/sensors/all?limit=1000')  // Fetch all stored readings
+    const apiUrl = `${backendUrl.http}/api/sensors/all?limit=1000`;
+    console.log(`📡 Fetching historical data from: ${apiUrl}`);
+    
+    fetch(apiUrl)  // Fetch all stored readings
       .then(res => {
         if (!res.ok) throw new Error('Backend not available');
         return res.json();
