@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   LayoutDashboard, 
   Sprout, 
@@ -13,7 +13,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Sun,
-  Moon
+  Moon,
+  Languages
 } from 'lucide-react';
 import { SensorData, Alert, View } from './types';
 
@@ -29,6 +30,41 @@ interface SensorStatus {
   online: boolean;
   lastSeen: number; // timestamp
 }
+
+// Language types for TTS
+type Language = 'english' | 'pidgin' | 'yoruba' | 'hausa' | 'igbo';
+
+// Pre-translated alert messages for offline use
+const alertTranslations: Record<string, Record<Language, string>> = {
+  'moisture_critical': {
+    english: 'Alert. Soil moisture critical. Water crops immediately.',
+    pidgin: 'Alert o! Water no dey for ground. Abeg water your crop now now!',
+    yoruba: 'Ikilo! Omi ile ti dinku pupọ. Jọwọ fun omi si irugbin rẹ bayi.',
+    hausa: 'Gargadi! Ruwan ƙasa ya yi ƙasa. Don Allah shayar da amfanin gona yanzu.',
+    igbo: 'Ọkwa! Mmiri ala dị obere. Biko nye osikapa mmiri ugbu a.'
+  },
+  'temperature_high': {
+    english: 'Warning. Temperature is too high. Check your crops.',
+    pidgin: 'Warning o! Heat too much. Go check your farm quick quick!',
+    yoruba: 'Ikilo! Iwọn otutu ga pupọ. Ṣayẹwo irugbin rẹ.',
+    hausa: 'Gargadi! Zafin jiki ya yi yawa. Duba amfanin gonar ku.',
+    igbo: 'Ọkwa! Okpomọkụ dị elu. Lelee ihe ọkụkụ gị.'
+  },
+  'humidity_low': {
+    english: 'Alert. Humidity is low. Consider irrigation.',
+    pidgin: 'Alert! Dampness don low well well. Think about watering.',
+    yoruba: 'Ikilo! Ọrinrin kere. Ronu nipa agbe.',
+    hausa: 'Gargadi! Danshi ya yi ƙasa. Yi la\'akari da ban ruwa.',
+    igbo: 'Ọkwa! Ikuku mmiri dị ala. Chee banyere ịgba mmiri.'
+  },
+  'sensor_offline': {
+    english: 'Sensor has disconnected.',
+    pidgin: 'Sensor don comot. E no dey work again.',
+    yoruba: 'Sensọ ti ya sọtọ. Ko ṣiṣẹ mọ.',
+    hausa: 'Sensor ya katse. Ba ya aiki.',
+    igbo: 'Sensa ekwunyịla. Ọ naghị arụ ọrụ.'
+  }
+};
 
 // Get backend URL dynamically based on how the user accesses the frontend
 const getBackendUrl = () => {
@@ -53,7 +89,11 @@ const App: React.FC = () => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [selectedLanguage, setSelectedLanguage] = useState<Language>('english');
+  const [showLanguageMenu, setShowLanguageMenu] = useState(false);
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const languageMenuRef = useRef<HTMLDivElement>(null);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [selectedSensorId, setSelectedSensorId] = useState<number | null>(null); // null = all sensors
   const [availableSensors, setAvailableSensors] = useState<number[]>([]);
@@ -239,7 +279,48 @@ const App: React.FC = () => {
       setIsDarkMode(true);
       document.documentElement.classList.add('dark');
     }
+
+    // Load available voices
+    const loadVoices = () => {
+      const voices = window.speechSynthesis.getVoices();
+      setAvailableVoices(voices);
+    };
+
+    if ('speechSynthesis' in window) {
+      loadVoices();
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
+
+    // Close language menu when clicking outside
+    const handleClickOutside = (event: MouseEvent) => {
+      if (languageMenuRef.current && !languageMenuRef.current.contains(event.target as Node)) {
+        setShowLanguageMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Get the best voice for the selected language
+  const getVoiceForLanguage = (lang: Language): SpeechSynthesisVoice | null => {
+    if (availableVoices.length === 0) return null;
+    
+    // Language code mapping
+    const langCodes: Record<Language, string[]> = {
+      english: ['en-NG', 'en-GB', 'en-US', 'en'],
+      pidgin: ['en-NG', 'en-GB', 'en'],  // Use English voice for Pidgin
+      yoruba: ['yo', 'yo-NG', 'en-NG', 'en'],
+      hausa: ['ha', 'ha-NG', 'en-NG', 'en'],
+      igbo: ['ig', 'ig-NG', 'en-NG', 'en']
+    };
+    
+    const codes = langCodes[lang];
+    for (const code of codes) {
+      const voice = availableVoices.find(v => v.lang.startsWith(code));
+      if (voice) return voice;
+    }
+    return availableVoices[0]; // Fallback to first available voice
+  };
 
   const checkAlerts = (data: SensorData) => {
     const newAlerts: Alert[] = [];
@@ -252,7 +333,9 @@ const App: React.FC = () => {
         timestamp: Date.now(),
         severity: 'critical'
       });
-      if (soundEnabled && !showLandingPage) speak("Alert. Soil moisture critical.");
+      if (soundEnabled && !showLandingPage) {
+        speakAlert('moisture_critical');
+      }
     }
     
     if (data.temperature > 35) {
@@ -263,6 +346,9 @@ const App: React.FC = () => {
         timestamp: Date.now(),
         severity: 'warning'
       });
+      if (soundEnabled && !showLandingPage) {
+        speakAlert('temperature_high');
+      }
     }
 
     if (newAlerts.length > 0) {
@@ -270,9 +356,26 @@ const App: React.FC = () => {
     }
   };
 
+  // Speak an alert in the selected language
+  const speakAlert = (alertKey: string) => {
+    const translations = alertTranslations[alertKey];
+    if (!translations) return;
+    
+    const text = translations[selectedLanguage] || translations.english;
+    speak(text);
+  };
+
   const speak = (text: string) => {
     if ('speechSynthesis' in window) {
       const utterance = new SpeechSynthesisUtterance(text);
+      const voice = getVoiceForLanguage(selectedLanguage);
+      if (voice) utterance.voice = voice;
+      
+      // Adjust rate for non-English to make it clearer
+      if (selectedLanguage !== 'english') {
+        utterance.rate = 0.9;
+      }
+      
       window.speechSynthesis.speak(utterance);
     }
   };
@@ -452,7 +555,7 @@ const App: React.FC = () => {
           </nav>
 
           {/* Footer */}
-          <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 overflow-hidden">
+          <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50">
             <div className={`flex items-center transition-all duration-300 ${isCollapsed ? 'flex-col gap-4 justify-center' : 'justify-between mb-4'}`}>
               <div className={`flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400 ${isCollapsed ? 'justify-center' : ''}`}>
                 {isOnline ? <Wifi className="w-4 h-4 text-emerald-500 flex-shrink-0" /> : <WifiOff className="w-4 h-4 text-slate-400 flex-shrink-0" />}
@@ -460,7 +563,67 @@ const App: React.FC = () => {
                    {isOnline ? 'System Online' : 'Offline'}
                 </span>
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2" ref={languageMenuRef}>
+                {/* Language Selector */}
+                <div className="relative">
+                  <button 
+                    onClick={() => setShowLanguageMenu(!showLanguageMenu)} 
+                    className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200" 
+                    title={`Language: ${selectedLanguage.charAt(0).toUpperCase() + selectedLanguage.slice(1)}`}
+                  >
+                    <Languages className="w-4 h-4 flex-shrink-0" />
+                  </button>
+                  
+                  {/* Language Dropdown Menu */}
+                  {showLanguageMenu && (
+                    <div className="fixed bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl py-1 min-w-[150px] z-[100]"
+                      style={{
+                        bottom: '80px',
+                        left: isCollapsed ? '70px' : '180px'
+                      }}
+                    >
+                      <div className="px-3 py-2 text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider border-b border-slate-100 dark:border-slate-700">
+                        Select Language
+                      </div>
+                      {[
+                        { value: 'english', label: 'English', flag: '🇬🇧' },
+                        { value: 'pidgin', label: 'Pidgin', flag: '🇳🇬' },
+                        { value: 'yoruba', label: 'Yorùbá', flag: '🇳🇬' },
+                        { value: 'hausa', label: 'Hausa', flag: '🇳🇬' },
+                        { value: 'igbo', label: 'Igbo', flag: '🇳🇬' }
+                      ].map((lang) => (
+                        <button
+                          key={lang.value}
+                          onClick={() => {
+                            setSelectedLanguage(lang.value as Language);
+                            setShowLanguageMenu(false);
+                            // Play a test sound in the new language
+                            if (soundEnabled) {
+                              const testPhrases: Record<Language, string> = {
+                                english: 'Language changed to English',
+                                pidgin: 'We don change am to Pidgin',
+                                yoruba: 'A ti yí padà sí Yorùbá',
+                                hausa: 'An canza zuwa Hausa',
+                                igbo: 'Anyị gbanwere na Igbo'
+                              };
+                              speak(testPhrases[lang.value as Language]);
+                            }
+                          }}
+                          className={`w-full px-3 py-2 text-left text-sm flex items-center gap-2 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors ${
+                            selectedLanguage === lang.value 
+                              ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20' 
+                              : 'text-slate-700 dark:text-slate-300'
+                          }`}
+                        >
+                          <span className="text-base">{lang.flag}</span>
+                          <span>{lang.label}</span>
+                          {selectedLanguage === lang.value && <span className="ml-auto text-emerald-500">✓</span>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 <button onClick={toggleDarkMode} className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200" title="Toggle Theme">
                     {isDarkMode ? <Moon className="w-4 h-4 flex-shrink-0" /> : <Sun className="w-4 h-4 flex-shrink-0" />}
                 </button>
