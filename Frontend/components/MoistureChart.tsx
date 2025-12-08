@@ -303,7 +303,6 @@ export const SensorChart: React.FC<SensorChartProps> = ({
   const renderSimpleChart = () => (
     <ResponsiveContainer width="100%" height="100%">
       <AreaChart 
-        key={`chart-${timeRange}-${selectedSensorId}-${simpleChartData.length}`}
         data={simpleChartData} 
         margin={{ top: 10, right: 30, left: 0, bottom: 20 }}
       >
