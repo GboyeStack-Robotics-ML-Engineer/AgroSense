@@ -150,7 +150,19 @@ const App: React.FC = () => {
         console.log('✅ Adding sensor reading to history:', reading);
         
         setSensorHistory(prev => {
-          const newHistory = [...prev, reading].slice(-200); // Keep last 200 readings
+          // Check if this reading already exists (by id or timestamp+sensorId)
+          const exists = prev.some(r => 
+            r.id === reading.id || 
+            (r.timestamp === reading.timestamp && r.sensorId === reading.sensorId)
+          );
+          
+          if (exists) {
+            console.log(`⏭️ Skipping duplicate reading id=${reading.id}`);
+            return prev;
+          }
+          
+          // Add new reading and keep last 500 readings (increased from 200)
+          const newHistory = [...prev, reading].slice(-500);
           console.log(`📈 History updated, total readings: ${newHistory.length}`);
           return newHistory;
         });
@@ -193,11 +205,26 @@ const App: React.FC = () => {
           ph: d.ph,
           timestamp: new Date(d.timestamp).getTime(),
           zone: d.zone
-        })).reverse();  // Oldest first for chart display
+        }));
+        
+        // Sort by timestamp (oldest first for chart display)
+        readings.sort((a, b) => a.timestamp - b.timestamp);
         
         if (readings.length > 0) {
-          setSensorHistory(readings);
-          console.log(`✅ Loaded ${readings.length} readings into chart`);
+          // Merge with any existing data (from WebSocket) avoiding duplicates
+          setSensorHistory(prev => {
+            if (prev.length === 0) {
+              console.log(`✅ Loaded ${readings.length} historical readings into chart`);
+              return readings;
+            }
+            
+            // Merge: historical data + any new WebSocket data not in historical
+            const historicalIds = new Set(readings.map(r => r.id));
+            const newFromWs = prev.filter(r => !historicalIds.has(r.id));
+            const merged = [...readings, ...newFromWs].sort((a, b) => a.timestamp - b.timestamp);
+            console.log(`✅ Merged ${readings.length} historical + ${newFromWs.length} new = ${merged.length} total`);
+            return merged.slice(-1000); // Keep last 1000 readings
+          });
         } else {
           console.log('ℹ️ No historical readings in database yet');
         }

@@ -115,26 +115,52 @@ export const SensorChart: React.FC<SensorChartProps> = ({
     return currentData;
   };
 
-  // Filter data based on time range
-  const getFilteredData = () => {
+  // Filter data based on time range (relative to the most recent data point)
+  // AND calculate the fixed time window for X-axis domain
+  const getFilteredDataAndDomain = () => {
     const sensorFiltered = getDataToUse();
     
-    if (timeRange === 'all') return sensorFiltered;
+    if (sensorFiltered.length === 0) {
+      return { data: [], domain: [Date.now() - 5 * 60 * 1000, Date.now()] as [number, number] };
+    }
     
-    const now = Date.now();
+    // Find the most recent timestamp in the data
+    const latestTimestamp = Math.max(...sensorFiltered.map(d => d.timestamp));
+    
     const ranges: Record<TimeRange, number> = {
       '5m': 5 * 60 * 1000,
       '15m': 15 * 60 * 1000,
       '30m': 30 * 60 * 1000,
       '1h': 60 * 60 * 1000,
-      'all': Infinity
+      'all': 0  // Will be calculated from data
     };
     
-    const cutoff = now - ranges[timeRange];
-    return sensorFiltered.filter(d => d.timestamp >= cutoff);
+    let domainStart: number;
+    let domainEnd: number;
+    
+    if (timeRange === 'all') {
+      // For 'all', use the full data range
+      const earliestTimestamp = Math.min(...sensorFiltered.map(d => d.timestamp));
+      domainStart = earliestTimestamp;
+      domainEnd = latestTimestamp;
+      return { data: sensorFiltered, domain: [domainStart, domainEnd] as [number, number] };
+    }
+    
+    // For specific time ranges, set a fixed window
+    const interval = ranges[timeRange];
+    domainEnd = latestTimestamp;
+    domainStart = latestTimestamp - interval;
+    
+    // Filter data to only include points within this window
+    const filtered = sensorFiltered.filter(d => d.timestamp >= domainStart && d.timestamp <= domainEnd);
+    
+    return { data: filtered, domain: [domainStart, domainEnd] as [number, number] };
   };
 
-  const filteredData = getFilteredData();
+  const { data: filteredData, domain: timeDomain } = getFilteredDataAndDomain();
+
+  // Debug logging
+  console.log(`📊 Chart [${title}]: timeRange=${timeRange}, dataPoints=${filteredData.length}, domain=[${new Date(timeDomain[0]).toLocaleTimeString()}, ${new Date(timeDomain[1]).toLocaleTimeString()}], isLive=${isLive}`);
 
   // Apply zoom and pan (only for expanded view)
   const getVisibleData = useCallback(() => {
@@ -250,10 +276,37 @@ export const SensorChart: React.FC<SensorChartProps> = ({
     { value: 'all', label: 'All' }
   ];
 
+  // Format timestamp for X-axis labels based on time range
+  const formatXAxisTick = (timestamp: number) => {
+    const date = new Date(timestamp);
+    if (timeRange === '1h' || timeRange === 'all') {
+      // For longer ranges, show only hour:minute
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    // For shorter ranges (5m, 15m, 30m), show minute:second
+    return date.toLocaleTimeString([], { minute: '2-digit', second: '2-digit' });
+  };
+
+  // Calculate appropriate number of ticks based on time range
+  const getTickCount = () => {
+    switch (timeRange) {
+      case '5m': return 5;    // Show ~1 tick per minute
+      case '15m': return 5;   // Show ~1 tick per 3 minutes  
+      case '30m': return 6;   // Show ~1 tick per 5 minutes
+      case '1h': return 6;    // Show ~1 tick per 10 minutes
+      case 'all': return 6;   // Show ~6 evenly spaced ticks
+      default: return 5;
+    }
+  };
+
   // Simple chart for non-expanded view
   const renderSimpleChart = () => (
     <ResponsiveContainer width="100%" height="100%">
-      <AreaChart data={simpleChartData} margin={{ top: 10, right: 30, left: 0, bottom: 20 }}>
+      <AreaChart 
+        key={`chart-${timeRange}-${selectedSensorId}-${simpleChartData.length}`}
+        data={simpleChartData} 
+        margin={{ top: 10, right: 30, left: 0, bottom: 20 }}
+      >
         <defs>
           <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
             <stop offset="5%" stopColor={color} stopOpacity={0.3}/>
@@ -262,11 +315,15 @@ export const SensorChart: React.FC<SensorChartProps> = ({
         </defs>
         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
         <XAxis 
-          dataKey="time" 
+          dataKey="timestamp"
+          type="number"
+          domain={timeDomain}
+          scale="time"
+          tickCount={getTickCount()}
           tick={{fontSize: 11, fill: axisColor}} 
           axisLine={false} 
           tickLine={false}
-          interval="preserveStartEnd"
+          tickFormatter={formatXAxisTick}
         />
         <YAxis 
           domain={['auto', 'auto']} 
@@ -283,6 +340,7 @@ export const SensorChart: React.FC<SensorChartProps> = ({
             border: `1px solid ${isDarkMode ? '#334155' : '#e2e8f0'}`,
             color: isDarkMode ? '#f8fafc' : '#1e293b'
           }}
+          labelFormatter={(timestamp: number) => new Date(timestamp).toLocaleString()}
           formatter={(value: number) => [`${value} ${unit}`, title]}
         />
         {threshold && (
@@ -354,11 +412,15 @@ export const SensorChart: React.FC<SensorChartProps> = ({
           />
           
           <XAxis 
-            dataKey="time" 
+            dataKey="timestamp"
+            type="number"
+            domain={timeDomain}
+            scale="time"
+            tickCount={getTickCount()}
             tick={{fontSize: 11, fill: isDarkMode ? '#64748b' : '#94a3b8'}} 
             axisLine={{ stroke: isDarkMode ? '#1e3a5f' : '#e2e8f0' }}
             tickLine={{ stroke: isDarkMode ? '#1e3a5f' : '#e2e8f0' }}
-            interval="preserveStartEnd"
+            tickFormatter={formatXAxisTick}
           />
           
           <YAxis 

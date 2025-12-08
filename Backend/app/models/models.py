@@ -1,5 +1,6 @@
 from sqlalchemy import Column, Integer, Float, String, DateTime, Boolean
 from sqlalchemy.sql import func
+from datetime import datetime
 from ..database import Base
 
 
@@ -7,7 +8,7 @@ class SensorReading(Base):
     __tablename__ = "sensor_readings"
     
     id = Column(Integer, primary_key=True, index=True)
-    timestamp = Column(DateTime, server_default=func.now(), index=True)
+    timestamp = Column(DateTime, default=datetime.now, index=True)  # Local time
     
     # Sensor identification
     sensor_id = Column(Integer, nullable=False, default=1, index=True)
@@ -26,7 +27,7 @@ class Alert(Base):
     __tablename__ = "alerts"
     
     id = Column(Integer, primary_key=True, index=True)
-    timestamp = Column(DateTime, server_default=func.now(), index=True)
+    timestamp = Column(DateTime, default=datetime.now, index=True)  # Local time
     
     type = Column(String, nullable=False)  # 'moisture', 'temp', 'security', etc.
     severity = Column(String, nullable=False)  # 'low', 'medium', 'high', 'critical'
@@ -43,7 +44,7 @@ class AnalysisLog(Base):
     __tablename__ = "analysis_logs"
     
     id = Column(Integer, primary_key=True, index=True)
-    timestamp = Column(DateTime, server_default=func.now(), index=True)
+    timestamp = Column(DateTime, default=datetime.now, index=True)  # Local time
     
     analysis_type = Column(String, nullable=False)  # 'plant_health', 'security'
     result = Column(String, nullable=False)

@@ -105,10 +105,12 @@ class MQTTListener:
             db.refresh(reading)
 
             # Broadcast to WebSocket clients
+            # Use local time for display consistency
+            from datetime import datetime
             reading_data = {
                 "id": reading.id,  # Database ID
                 "sensorId": reading.sensor_id,  # Hardware sensor ID
-                "timestamp": reading.timestamp.isoformat(),
+                "timestamp": datetime.now().isoformat(),  # Use local time, not UTC
                 "moisture": reading.moisture,
                 "temperature": reading.temperature,
                 "humidity": reading.humidity,
