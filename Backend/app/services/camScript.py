@@ -180,4 +180,3 @@ def save_alert_to_db(image_bytes):
         print(f"DB Error: {e}")
     finally:
         db.close()
->>>>>>> e365f3be5a4ddc6171d9188555da605aaf400efe
