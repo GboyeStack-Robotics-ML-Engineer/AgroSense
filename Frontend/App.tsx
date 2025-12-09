@@ -226,19 +226,26 @@ const App: React.FC = () => {
 
   // Fetch initial historical data from backend (all stored readings)
   useEffect(() => {
-    const apiUrl = `${backendUrl.http}/api/sensors/all?limit=1000`;
-    console.log(`📡 Fetching historical data from: ${apiUrl}`);
-    
-    fetch(apiUrl)  // Fetch all stored readings
-      .then(res => {
-        if (!res.ok) throw new Error('Backend not available');
-        return res.json();
-      })
-      .then((data: any[]) => {
+    const fetchHistoricalData = async () => {
+      const apiUrl = `${backendUrl.http}/api/sensors/all?limit=2000`;
+      console.log(`📡 Fetching historical data from: ${apiUrl}`);
+      
+      try {
+        const res = await fetch(apiUrl);
+        if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`);
+        }
+        const data: any[] = await res.json();
         console.log(`📊 Fetched ${data.length} historical readings from database`);
+        
+        if (data.length === 0) {
+          console.log('ℹ️ No historical readings in database yet');
+          return;
+        }
+        
         const readings: SensorData[] = data.map(d => ({
           id: d.id,
-          sensorId: d.sensor_id || 1, // Hardware sensor ID from database
+          sensorId: d.sensor_id || 1,
           moisture: d.moisture,
           temperature: d.temperature,
           humidity: d.humidity,
@@ -250,29 +257,34 @@ const App: React.FC = () => {
         // Sort by timestamp (oldest first for chart display)
         readings.sort((a, b) => a.timestamp - b.timestamp);
         
-        if (readings.length > 0) {
-          // Merge with any existing data (from WebSocket) avoiding duplicates
-          setSensorHistory(prev => {
-            if (prev.length === 0) {
-              console.log(`✅ Loaded ${readings.length} historical readings into chart`);
-              return readings;
-            }
-            
-            // Merge: historical data + any new WebSocket data not in historical
-            const historicalIds = new Set(readings.map(r => r.id));
-            const newFromWs = prev.filter(r => !historicalIds.has(r.id));
-            const merged = [...readings, ...newFromWs].sort((a, b) => a.timestamp - b.timestamp);
-            console.log(`✅ Merged ${readings.length} historical + ${newFromWs.length} new = ${merged.length} total`);
-            return merged.slice(-1000); // Keep last 1000 readings
-          });
-        } else {
-          console.log('ℹ️ No historical readings in database yet');
-        }
-      })
-      .catch(err => {
-        console.error('Failed to fetch initial sensor data:', err);
-        // Don't set offline just because fetch failed - WebSocket might still work
-      });
+        console.log(`📈 First reading: ${new Date(readings[0].timestamp).toLocaleString()}`);
+        console.log(`📈 Last reading: ${new Date(readings[readings.length - 1].timestamp).toLocaleString()}`);
+        
+        // Set the historical data, merging with any WebSocket data
+        setSensorHistory(prev => {
+          if (prev.length === 0) {
+            console.log(`✅ Loaded ${readings.length} historical readings into chart`);
+            return readings;
+          }
+          
+          // Merge: historical data + any new WebSocket data not in historical
+          const historicalIds = new Set(readings.map(r => r.id));
+          const newFromWs = prev.filter(r => r.id && !historicalIds.has(r.id));
+          const merged = [...readings, ...newFromWs].sort((a, b) => a.timestamp - b.timestamp);
+          console.log(`✅ Merged ${readings.length} historical + ${newFromWs.length} new = ${merged.length} total`);
+          return merged.slice(-2000); // Keep last 2000 readings
+        });
+        
+      } catch (err) {
+        console.error('❌ Failed to fetch historical data:', err);
+      }
+    };
+    
+    // Fetch immediately and also after a short delay (in case backend is still starting)
+    fetchHistoricalData();
+    const retryTimeout = setTimeout(fetchHistoricalData, 2000);
+    
+    return () => clearTimeout(retryTimeout);
 
     // Check system preference for dark mode
     if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
