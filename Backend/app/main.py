@@ -7,6 +7,7 @@ from .database import engine, Base
 from .routers import sensors, alerts, ai_analysis, websocket
 from .routers.websocket import check_sensor_timeouts
 from .services.mqtt_listener import mqtt_listener
+from .services.camScript import camera
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -26,13 +27,15 @@ async def sensor_timeout_checker():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan manager."""
+    """Appl
     global sensor_check_task
     
     # Startup
     mqtt_listener.start()
     sensor_check_task = asyncio.create_task(sensor_timeout_checker())
     print("[STARTUP] Sensor timeout checker started")
+
+    camera_task = asyncio.create_task(camera.get_intruder())
     
     yield
     
