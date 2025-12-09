@@ -98,6 +98,7 @@ class SmartCamera():
 
 
 def detect_motion(prev, next, model_path):
+                # print(model_path)
                 try:
                 	threshold = 0.6
                 	prev_gray, next_gray = cv2.cvtColor(prev, cv2.COLOR_BGR2GRAY), cv2.cvtColor(next, cv2.COLOR_BGR2GRAY)
