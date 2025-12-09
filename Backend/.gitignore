@@ -32,5 +32,6 @@ htmlcov/
 # OS
 .DS_Store
 Thumbs.db
-app/__pycache__/
 
+
+..node_modules/
