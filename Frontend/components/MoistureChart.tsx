@@ -33,7 +33,7 @@ export const SensorChart: React.FC<SensorChartProps> = ({
   isDarkMode = false,
   threshold,
   selectedSensorId = null,
-  isLive = false
+  isLive = true  // Default to true so charts update
 }) => {
   const [timeRange, setTimeRange] = useState<TimeRange>('all');
   const [isExpanded, setIsExpanded] = useState(false);
@@ -47,24 +47,9 @@ export const SensorChart: React.FC<SensorChartProps> = ({
   
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const lastPanX = useRef(0);
-  
-  // Cache for offline sensor data - when sensor goes offline, we freeze its data
-  const cachedOfflineData = useRef<SensorData[]>([]);
-  const wasLive = useRef(isLive);
-  const lastSelectedSensorId = useRef(selectedSensorId);
-
-  // Clear cache when switching sensors
-  useEffect(() => {
-    if (lastSelectedSensorId.current !== selectedSensorId) {
-      cachedOfflineData.current = [];
-      wasLive.current = isLive;
-      lastSelectedSensorId.current = selectedSensorId;
-      console.log(`🔄 Cleared cache - switched to sensor ${selectedSensorId}`);
-    }
-  }, [selectedSensorId, isLive]);
 
   // Filter data based on sensor selection
-  const getSensorFilteredData = () => {
+  const getSensorFilteredData = (): SensorData[] => {
     if (selectedSensorId === null) {
       const timestampMap = new Map<number, { sum: number; count: number; ids: Set<number> }>();
       
@@ -94,25 +79,9 @@ export const SensorChart: React.FC<SensorChartProps> = ({
     return data.filter(d => d.sensorId === selectedSensorId);
   };
 
-  // Get the data to use - either live data or cached offline data
+  // Always use fresh data - no caching that blocks updates
   const getDataToUse = (): SensorData[] => {
-    const currentData = getSensorFilteredData();
-    
-    // If sensor just went offline, cache the current data
-    if (wasLive.current && !isLive) {
-      cachedOfflineData.current = [...currentData];
-      console.log(`📦 Cached ${currentData.length} readings for offline sensor ${selectedSensorId}`);
-    }
-    
-    // Update the previous live state
-    wasLive.current = isLive;
-    
-    // If sensor is offline, use cached data; otherwise use live data
-    if (!isLive && cachedOfflineData.current.length > 0) {
-      return cachedOfflineData.current;
-    }
-    
-    return currentData;
+    return getSensorFilteredData();
   };
 
   // Filter data based on time range (relative to the most recent data point)
