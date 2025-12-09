@@ -25,6 +25,8 @@ pip install -r requirements.txt
 Write-Host "`n✅ Setup complete!" -ForegroundColor Green
 Write-Host "`nTo start the server, run:" -ForegroundColor Yellow
 Write-Host "  .\venv\Scripts\Activate.ps1" -ForegroundColor White
-Write-Host "  uvicorn app.main:app --reload --port 8000" -ForegroundColor White
+Write-Host "  uvicorn app.main:app --reload --host 0.0.0.0 --port 8000" -ForegroundColor White
 Write-Host "`nAPI Documentation will be available at:" -ForegroundColor Yellow
 Write-Host "  http://localhost:8000/docs" -ForegroundColor White
+Write-Host "`nTo access from other devices on the network, use your IP address:" -ForegroundColor Yellow
+Write-Host "  http://<your-ip>:8000/docs" -ForegroundColor White
