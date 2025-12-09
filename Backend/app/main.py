@@ -39,7 +39,7 @@ async def lifespan(app: FastAPI):
     print("[STARTUP] Sensor timeout checker started")
 
     camera = SmartCamera()
-    security_task = asyncio.create_task(camera.run_security_loop())
+    security_task = asyncio.create_task(camera.run_security_loop("app/detect.tflite"))
     
     yield
     
