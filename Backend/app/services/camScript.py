@@ -62,13 +62,13 @@ class SmartCamera():
                         b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
 
         
-        async def get_intruder():
+        async def run_security_loop(self):
             while True:
                     await asyncio.sleep(3)
 
-                    prev = camera.get_frame()
+                    prev = self.get_frame()
                     await asyncio.sleep(2)
-                    next = camera.get_frame()
+                    next = self.get_frame()
                     if (prev is not None) and (next is not None):
                             intruder = await asyncio.to_thread(detect_motion, prev, next)
 
@@ -78,35 +78,8 @@ class SmartCamera():
                     frame_bytes = buffer.tobytes()
 
 
-                    db = SessionLocal()
+                    await asyncio.to_thread(save_alert_to_db, frame_bytes)
 
-                    capture = AnalysisLog(
-                            analysis_type = "security",
-                            result = "Detected"
-                            image_path = frame_bytes.copy())
-                    
-                    db.add(capture)
-                    db.commit()
-                    db.refresh(capture)
-
-                    capture_data = {
-                            "id":capture.id,
-                            "timestamp":capture.timestamp,
-                            "analysis_type": capture.analysis_type,
-                            "result":capture.result,
-                            "image_path":capture.image_path
-                    }
-
-                    try:
-                        loop = asyncio.get_event_loop()
-                        loop.create_task(broadcast_alert(capture_data))
-                    except RuntimeError:
-                        # If no event loop in thread, use asyncio.run
-                        asyncio.run(broadcast_alert(capture_data))
-                   # yield (b'--frame\r\n'
-                   #b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
-
-camera = SmartCamera()
 
 def detect_motion(prev, next):
                 threshold = 0.6
@@ -179,21 +152,31 @@ def detect_motion(prev, next):
                                         return frame
 
 
-
-"""@app.get("/video_feed")
-async def video_feed():
-        return StreamingResponse(stream(), media_type="multipart/x-mixed-replace; boundary=frame")
-
-
-@app.get("/warning_stream")
-async def video_feed():
-        return StreamingResponse(get_intruder(), media_type="multipart/x-mixed-replace; boundary=frame")
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    global camera
-    camera.destroy()
-
-if __name__ == "__main__":
-        uvicorn.run(app, host="smart.local", port=8000)"""
+def save_alert_to_db(image_bytes):
+    """Helper to run DB operations synchronously"""
+    db = SessionLocal()
+    try:
+        capture = AnalysisLog(
+            analysis_type="security",
+            result="Detected",
+            image_path=image_bytes # Ensure your DB model handles bytes or path string correctly
+        )
+        db.add(capture)
+        db.commit()
+        db.refresh(capture)
+        
+        # Prepare data for WebSocket
+        data = {
+            "id": capture.id,
+            "timestamp": capture.timestamp,
+            "result": capture.result
+        }
+        
+        # Trigger WebSocket (Need to handle the async call from sync context carefully)
+        # Usually easier to fire-and-forget or use a queue here
+        asyncio.run(broadcast_alert(data))
+        
+    except Exception as e:
+        print(f"DB Error: {e}")
+    finally:
+        db.close()

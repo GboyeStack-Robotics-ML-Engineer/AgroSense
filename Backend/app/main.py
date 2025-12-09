@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from contextlib import asynccontextmanager
 import asyncio
 from .config import settings
@@ -7,13 +8,14 @@ from .database import engine, Base
 from .routers import sensors, alerts, ai_analysis, websocket
 from .routers.websocket import check_sensor_timeouts
 from .services.mqtt_listener import mqtt_listener
-from .services.camScript import camera
+from .services.camScript import SmartCamera
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
 
 # Background task for checking sensor timeouts
 sensor_check_task = None
+camera=None
 
 async def sensor_timeout_checker():
     """Background task to periodically check for sensor timeouts."""
@@ -27,15 +29,17 @@ async def sensor_timeout_checker():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Appl
+    #Appl
     global sensor_check_task
+    global camera
     
     # Startup
     mqtt_listener.start()
     sensor_check_task = asyncio.create_task(sensor_timeout_checker())
     print("[STARTUP] Sensor timeout checker started")
 
-    camera_task = asyncio.create_task(camera.get_intruder())
+    camera = SmartCamera()
+    security_task = asyncio.create_task(camera.run_security_loop())
     
     yield
     
@@ -46,6 +50,17 @@ async def lifespan(app: FastAPI):
             await sensor_check_task
         except asyncio.CancelledError:
             pass
+
+    if security_task:
+        security_task.cancel()
+        try:
+            await security_task
+        except asyncio.CancelledError:
+            pass
+
+    if camera:
+        camera.destroy()
+    
     mqtt_listener.shutdown()
     print("[SHUTDOWN] Cleanup complete")
 
@@ -85,3 +100,8 @@ async def root():
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
+
+
+@app.get("/video_feed")
+async def video_feed():
+        return StreamingResponse(camera.stream(), media_type="multipart/x-mixed-replace; boundary=frame")
