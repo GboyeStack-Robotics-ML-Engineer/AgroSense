@@ -76,7 +76,7 @@ const SecurityMonitor: React.FC = () => {
   // 1. WebSocket Connection Logic
 useEffect(() => {
     // 1. Connect to your existing endpoint defined in websocket.py
-    const ws = new WebSocket('ws://localhost:8000/sensor-data');
+    const ws = new WebSocket('ws://localhost:8000/ws/sensor-data');
 
     ws.onopen = () => console.log('Connected to Sensor/Security Stream');
 

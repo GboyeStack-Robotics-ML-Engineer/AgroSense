@@ -73,101 +73,105 @@ class SmartCamera():
 
         
         async def run_security_loop(self, model_path):
-            try:
+                try:
                     while True:
-                    	await asyncio.sleep(10)
+                        await asyncio.sleep(6)
 
-                    prev = self.get_frame()
-                    await asyncio.sleep(2)
-                    next = self.get_frame()
-                    if (prev is not None) and (next is not None):
-                        intruder = await asyncio.to_thread(detect_motion, prev, next)
+                        prev = self.get_frame()
+                        await asyncio.sleep(2)
+                        next = self.get_frame()
+                        if (prev is not None) and (next is not None):
+                                intruder = await asyncio.to_thread(detect_motion, prev, next, model_path)
+                                if intruder is not None:
+                                        cv2.imwrite("intruder.jpg", intruder)
+                                        logger.info("created intruder pic")
+                                        ret, buffer = cv2.imencode(".jpg", intruder)
+                                        if not ret:
+                                                continue
+                                        frame_bytes = buffer.tobytes()
 
-                        ret, buffer = cv2.imencode(".jpg", intruder)
-                        if not ret:
-                                continue
-                        frame_bytes = buffer.tobytes()
 
+                                        alert_payload = await asyncio.to_thread(save_alert_to_db, frame_bytes)
 
-                        alert_payload = await asyncio.to_thread(save_alert_to_db, frame_bytes)
-
-                         # 2. Run Broadcast (Async) in the MAIN LOOP
-                        # We are back in the main async context here, so we can safely use the websocket manager
-                        if alert_payload:
-                                await broadcast_alert(alert_payload)
-                        print("Alert Broadcasted to Frontend")
+                                        # 2. Run Broadcast (Async) in the MAIN LOOP
+                                        # We are back in the main async context here, so we can safely use the websocket manager
+                                        if alert_payload:
+                                                await broadcast_alert(alert_payload)
+                                        print("Alert Broadcasted to Frontend")
+                except Exception as e:
+                       logger.error(f"security loop error: {e}")
 
 
 def detect_motion(prev, next, model_path):
                 try:
-                	threshold = 0.6
-                	prev_gray, next_gray = cv2.cvtColor(prev, cv2.COLOR_BGR2GRAY), cv2.cvtColor(next, cv2.COLOR_BGR2GRAY)
-                	prev_gray, next_gray = cv2.GaussianBlur(prev_gray, (21, 21), 0), cv2.GaussianBlur(next_gray, (21, 21), 0)
+                        threshold = 0.6
+                        prev_gray, next_gray = cv2.cvtColor(prev, cv2.COLOR_BGR2GRAY), cv2.cvtColor(next, cv2.COLOR_BGR2GRAY)
+                        prev_gray, next_gray = cv2.GaussianBlur(prev_gray, (21, 21), 0), cv2.GaussianBlur(next_gray, (21, 21), 0)
 
-                	frame_delta = cv2.absdiff(prev_gray, next_gray)
-                	thresh = cv2.threshold(frame_delta, 25, 255, cv2.THRESH_BINARY)[1]
+                        frame_delta = cv2.absdiff(prev_gray, next_gray)
+                        thresh = cv2.threshold(frame_delta, 25, 255, cv2.THRESH_BINARY)[1]
 
-                	thresh = cv2.dilate(thresh, None, iterations=2)
+                        thresh = cv2.dilate(thresh, None, iterations=2)
 
-                	cnts, _ = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                	frame = next
-                	for contour in cnts:
-                        	if cv2.contourArea(contour) > 500:
-                                	interpreter = Interpreter(model_path=model_path)
-                                	interpreter.allocate_tensors()
-                                	input_details = interpreter.get_input_details()
-                                	output_details = interpreter.get_output_details()
+                        cnts, _ = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                        frame = next
+                        for contour in cnts:
+                                if cv2.contourArea(contour) > 500:
+                                        interpreter = Interpreter(model_path=model_path)
+                                        interpreter.allocate_tensors()
+                                        input_details = interpreter.get_input_details()
+                                        output_details = interpreter.get_output_details()
 
                         # 2. Resize to 300x300 (Standard for SSD MobileNet)
-                                	img_resized = cv2.resize(next, (300, 300))
-                                	input_data = np.expand_dims(img_resized, axis=0)
+                                        img_resized = cv2.resize(next, (300, 300))
+                                        input_data = np.expand_dims(img_resized, axis=0)
 
-                                	interpreter.set_tensor(input_details[0]['index'], input_data)
+                                        interpreter.set_tensor(input_details[0]['index'], input_data)
 
-                                	interpreter.invoke()
+                                        interpreter.invoke()
 
                                 # 4. Get Results
                                 # Boxes: [ymin, xmin, ymax, xmax]
-                                	boxes = interpreter.get_tensor(output_details[0]['index'])[0]
+                                        boxes = interpreter.get_tensor(output_details[0]['index'])[0]
                                 # Classes: The ID number (0=Person, 18=Dog, etc.)
-                                	classes = interpreter.get_tensor(output_details[1]['index'])[0]
+                                        classes = interpreter.get_tensor(output_details[1]['index'])[0]
                                 # Scores: Confidence (0.0 to 1.0)
-                                	scores = interpreter.get_tensor(output_details[2]['index'])[0]
+                                        scores = interpreter.get_tensor(output_details[2]['index'])[0]
 
-                                	INTRUDER_IDS = [0.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0]
+                                        INTRUDER_IDS = [0.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0]
 
-                                	intruder_found = False
+                                        intruder_found = False
 
-                                	for i in range(len(scores)):
-                                        	if scores[i] > threshold:
-                                                	detected_id = classes[i]
+                                        for i in range(len(scores)):
+                                                if scores[i] > threshold:
+                                                        detected_id = classes[i]
 
                                                 # Check if it is an intruder
-                                                	if detected_id in INTRUDER_IDS:
-                                                        	intruder_found = True
+                                                        if detected_id in INTRUDER_IDS:
+                                                                intruder_found = True
 
-                                                        	ymin, xmin, ymax, xmax = boxes[i]
-                                                        	h, w, _ = frame.shape
+                                                                ymin, xmin, ymax, xmax = boxes[i]
+                                                                h, w, _ = frame.shape
 
                                                         # Convert 0-1 range to pixels
-                                                        	x1 = int(xmin * w)
-                                                        	x2 = int(xmax * w)
-                                                        	y1 = int(ymin * h)
-                                                        	y2 = int(ymax * h)
+                                                                x1 = int(xmin * w)
+                                                                x2 = int(xmax * w)
+                                                                y1 = int(ymin * h)
+                                                                y2 = int(ymax * h)
 
                                                         # Draw Red Box
-                                                        	cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
+                                                                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
                                                         # Label it (e.g., "Intruder: Person")
-                                                        	label_map = {0:'Person', 16:'Bird', 17:'Cat', 18:'Dog', 21:'Cow'}                                 
-                                                        	obj_name = label_map.get(detected_id, 'Animal')
+                                                                label_map = {0:'Person', 16:'Bird', 17:'Cat', 18:'Dog', 21:'Cow'}                                 
+                                                                obj_name = label_map.get(detected_id, 'Animal')
 
-                                                        	label_text = f"Intruder: {obj_name}, Conf: {scores[i]*100:1f}"
-                                                        	(text_w, text_h), _ = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
-                                                        	cv2.rectangle(frame, (x1, y1-20), (x1 + text_w, y1), (0,0,255),-1)
+                                                                label_text = f"Intruder: {obj_name}, Conf: {scores[i]*100:1f}"
+                                                                (text_w, text_h), _ = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+                                                                cv2.rectangle(frame, (x1, y1-20), (x1 + text_w, y1), (0,0,255),-1)
 
-                                                        	cv2.putText(frame, label_text, (x1, y1-5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 2)                                                      
-                                                        	print(f"⚠️ ALERT: {obj_name} detected with {scores[i]*100:.1f}% confidence!")                               
-                                        	return frame
+                                                                cv2.putText(frame, label_text, (x1, y1-5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 2)                                                      
+                                                                print(f"⚠️ ALERT: {obj_name} detected with {scores[i]*100:.1f}% confidence!")                               
+                                                return frame
                 except Exception as e:
                 	logger.error(f"Model Error: {str(e)}")
 
