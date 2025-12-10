@@ -99,6 +99,16 @@ const App: React.FC = () => {
   const [availableSensors, setAvailableSensors] = useState<number[]>([]);
   const [sensorStatuses, setSensorStatuses] = useState<Record<number, SensorStatus>>({}); // Track online/offline status
 
+  // Refs for values used in WebSocket callback (to avoid stale closures)
+  const soundEnabledRef = useRef(soundEnabled);
+  const showLandingPageRef = useRef(showLandingPage);
+  const selectedLanguageRef = useRef(selectedLanguage);
+  
+  // Keep refs in sync
+  useEffect(() => { soundEnabledRef.current = soundEnabled; }, [soundEnabled]);
+  useEffect(() => { showLandingPageRef.current = showLandingPage; }, [showLandingPage]);
+  useEffect(() => { selectedLanguageRef.current = selectedLanguage; }, [selectedLanguage]);
+
   // Extract unique sensor IDs from data
   useEffect(() => {
     const ids = sensorHistory
@@ -110,119 +120,156 @@ const App: React.FC = () => {
     setAvailableSensors(sensorIds);
   }, [sensorHistory]);
 
-  // WebSocket connection for real-time data
+  // WebSocket connection for real-time data with auto-reconnect
   useEffect(() => {
-    const wsUrl = `${backendUrl.ws}/ws/sensor-data`;
-    console.log(`🔌 Connecting to WebSocket: ${wsUrl}`);
-    const ws = new WebSocket(wsUrl);
+    let ws: WebSocket | null = null;
+    let reconnectTimeout: NodeJS.Timeout | null = null;
+    let isComponentMounted = true;
     
-    ws.onopen = () => {
-      console.log('🔌 Connected to backend WebSocket');
-      setIsOnline(true);
-    };
-    
-    ws.onmessage = (event) => {
-      console.log('📩 WebSocket message received:', event.data);
-      const message = JSON.parse(event.data);
-      console.log('📊 Parsed message:', message);
+    const connect = () => {
+      if (!isComponentMounted) return;
       
-      // Handle initial sensor status sync
-      if (message.type === 'sensor_status_init') {
-        console.log('📡 Received initial sensor statuses:', message.data);
-        const statuses: Record<number, SensorStatus> = {};
-        for (const [sensorId, status] of Object.entries(message.data)) {
-          const s = status as { online: boolean; lastSeen: string };
-          statuses[parseInt(sensorId)] = {
-            online: s.online,
-            lastSeen: new Date(s.lastSeen).getTime()
-          };
-        }
-        setSensorStatuses(statuses);
+      const wsUrl = `${backendUrl.ws}/ws/sensor-data`;
+      console.log(`🔌 Connecting to WebSocket: ${wsUrl}`);
+      
+      try {
+        ws = new WebSocket(wsUrl);
+      } catch (err) {
+        console.error('Failed to create WebSocket:', err);
+        scheduleReconnect();
+        return;
       }
       
-      // Handle sensor status changes (online/offline)
-      if (message.type === 'sensor_status') {
-        const { sensorId, online, lastSeen } = message.data;
-        console.log(`📡 Sensor ${sensorId} is now ${online ? 'ONLINE' : 'OFFLINE'}`);
-        setSensorStatuses(prev => ({
-          ...prev,
-          [sensorId]: {
-            online,
-            lastSeen: new Date(lastSeen).getTime()
-          }
-        }));
-        
-        // Show alert when sensor goes offline
-        if (!online) {
-          setAlerts(prev => [{
-            id: `sensor-offline-${sensorId}-${Date.now()}`,
-            type: 'moisture',
-            message: `Sensor #${sensorId} has disconnected`,
-            timestamp: Date.now(),
-            severity: 'warning'
-          }, ...prev].slice(0, 20));
-        }
-      }
+      ws.onopen = () => {
+        console.log('🔌 Connected to backend WebSocket');
+        setIsOnline(true);
+      };
       
-      if (message.type === 'sensor_reading') {
-        const sensorId = message.data.sensorId || 1;
-        
-        // Update sensor status to online when we receive data
-        setSensorStatuses(prev => ({
-          ...prev,
-          [sensorId]: {
-            online: true,
-            lastSeen: Date.now()
-          }
-        }));
-        
-        const reading: SensorData = {
-          id: message.data.id,
-          sensorId: sensorId, // Hardware sensor ID
-          moisture: message.data.moisture,
-          temperature: message.data.temperature,
-          humidity: message.data.humidity,
-          ph: message.data.ph,
-          timestamp: new Date(message.data.timestamp).getTime(),
-          zone: message.data.zone
-        };
-        
-        console.log('✅ Adding sensor reading to history:', reading);
-        
-        setSensorHistory(prev => {
-          // Check if this reading already exists (by id or timestamp+sensorId)
-          const exists = prev.some(r => 
-            r.id === reading.id || 
-            (r.timestamp === reading.timestamp && r.sensorId === reading.sensorId)
-          );
+      ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
           
-          if (exists) {
-            console.log(`⏭️ Skipping duplicate reading id=${reading.id}`);
-            return prev;
+          // Handle initial sensor status sync
+          if (message.type === 'sensor_status_init') {
+            console.log('📡 Received initial sensor statuses:', message.data);
+            const statuses: Record<number, SensorStatus> = {};
+            for (const [sensorId, status] of Object.entries(message.data)) {
+              const s = status as { online: boolean; lastSeen: string };
+              statuses[parseInt(sensorId)] = {
+                online: s.online,
+                lastSeen: new Date(s.lastSeen).getTime()
+              };
+            }
+            setSensorStatuses(statuses);
           }
           
-          // Add new reading and keep last 500 readings (increased from 200)
-          const newHistory = [...prev, reading].slice(-500);
-          console.log(`📈 History updated, total readings: ${newHistory.length}`);
-          return newHistory;
-        });
-        
-        checkAlerts(reading);
+          // Handle sensor status changes (online/offline)
+          if (message.type === 'sensor_status') {
+            const { sensorId, online, lastSeen } = message.data;
+            console.log(`📡 Sensor ${sensorId} is now ${online ? 'ONLINE' : 'OFFLINE'}`);
+            setSensorStatuses(prev => ({
+              ...prev,
+              [sensorId]: {
+                online,
+                lastSeen: new Date(lastSeen).getTime()
+              }
+            }));
+            
+            // Show alert when sensor goes offline
+            if (!online) {
+              setAlerts(prev => [{
+                id: `sensor-offline-${sensorId}-${Date.now()}`,
+                type: 'moisture',
+                message: `Sensor #${sensorId} has disconnected`,
+                timestamp: Date.now(),
+                severity: 'warning'
+              }, ...prev].slice(0, 20));
+            }
+          }
+          
+          if (message.type === 'sensor_reading') {
+            const sensorId = message.data.sensorId || 1;
+            
+            // Update sensor status to online when we receive data
+            setSensorStatuses(prev => ({
+              ...prev,
+              [sensorId]: {
+                online: true,
+                lastSeen: Date.now()
+              }
+            }));
+            
+            const reading: SensorData = {
+              id: message.data.id,
+              sensorId: sensorId,
+              moisture: message.data.moisture,
+              temperature: message.data.temperature,
+              humidity: message.data.humidity,
+              ph: message.data.ph,
+              timestamp: new Date(message.data.timestamp).getTime(),
+              zone: message.data.zone
+            };
+            
+            setSensorHistory(prev => {
+              // Check if this reading already exists
+              const exists = prev.some(r => 
+                r.id === reading.id || 
+                (r.timestamp === reading.timestamp && r.sensorId === reading.sensorId)
+              );
+              
+              if (exists) {
+                return prev;
+              }
+              
+              // Add new reading and keep last 500 readings
+              return [...prev, reading].slice(-500);
+            });
+            
+            checkAlerts(reading);
+          }
+        } catch (err) {
+          console.error('Error processing WebSocket message:', err);
+        }
+      };
+      
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        setIsOnline(false);
+      };
+      
+      ws.onclose = () => {
+        console.log('❌ Disconnected from backend WebSocket');
+        setIsOnline(false);
+        ws = null;
+        scheduleReconnect();
+      };
+    };
+    
+    const scheduleReconnect = () => {
+      if (!isComponentMounted) return;
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      
+      console.log('🔄 Scheduling WebSocket reconnect in 3 seconds...');
+      reconnectTimeout = setTimeout(() => {
+        if (isComponentMounted) {
+          connect();
+        }
+      }, 3000);
+    };
+    
+    // Initial connection
+    connect();
+    
+    // Cleanup on unmount
+    return () => {
+      isComponentMounted = false;
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      if (ws) {
+        ws.onclose = null; // Prevent reconnect on intentional close
+        ws.close();
       }
     };
-    
-    ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
-      setIsOnline(false);
-    };
-    
-    ws.onclose = () => {
-      console.log('❌ Disconnected from backend');
-      setIsOnline(false);
-    };
-    
-    return () => ws.close();
-  }, [soundEnabled, showLandingPage]);
+  }, []); // Empty dependency array - only run once
 
   // Fetch initial historical data from backend (all stored readings)
   useEffect(() => {
@@ -345,7 +392,8 @@ const App: React.FC = () => {
         timestamp: Date.now(),
         severity: 'critical'
       });
-      if (soundEnabled && !showLandingPage) {
+      // Use refs to get current values (avoids stale closure)
+      if (soundEnabledRef.current && !showLandingPageRef.current) {
         speakAlert('moisture_critical');
       }
     }
@@ -358,7 +406,8 @@ const App: React.FC = () => {
         timestamp: Date.now(),
         severity: 'warning'
       });
-      if (soundEnabled && !showLandingPage) {
+      // Use refs to get current values (avoids stale closure)
+      if (soundEnabledRef.current && !showLandingPageRef.current) {
         speakAlert('temperature_high');
       }
     }
