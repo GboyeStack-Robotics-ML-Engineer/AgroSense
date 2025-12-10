@@ -14,5 +14,5 @@ paho-mqtt
 opencv-python-headless
 numpy==1.23.5
 #RPi.GPIO
-tflite-runtime
+https://github.com/google-coral/pycoral/releases/download/v2.0.0/tflite_runtime-2.5.0.post1-cp39-cp39-linux_aarch64.whl#sha256=9839c3acb506b5003a9bd3860329a8ae20e675efbae14dbea02659b0054f42c6
 opencv-python-headless
