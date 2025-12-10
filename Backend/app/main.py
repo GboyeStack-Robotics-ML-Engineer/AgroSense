@@ -3,9 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from contextlib import asynccontextmanager
 import asyncio
+from sqlalchemy import text
 from .config import settings
 from .database import engine, Base
-from .routers import sensors, alerts, ai_analysis, websocket
+from .routers import sensors, alerts, ai_analysis, websocket, camera as camera_router
 from .routers.websocket import check_sensor_timeouts
 from .services.mqtt_listener import mqtt_listener
 from .services.camScript import SmartCamera
@@ -13,9 +14,25 @@ from .services.camScript import SmartCamera
 # Create database tables
 Base.metadata.create_all(bind=engine)
 
+# Add missing columns if they don't exist (migration)
+def migrate_database():
+    try:
+        with engine.connect() as conn:
+            # Check if video_path column exists in analysis_logs
+            result = conn.execute(text("PRAGMA table_info(analysis_logs)"))
+            columns = [row[1] for row in result.fetchall()]
+            if 'video_path' not in columns:
+                conn.execute(text("ALTER TABLE analysis_logs ADD COLUMN video_path VARCHAR"))
+                conn.commit()
+                print("[MIGRATION] Added video_path column to analysis_logs")
+    except Exception as e:
+        print(f"[MIGRATION] Error: {e}")
+
+migrate_database()
+
 # Background task for checking sensor timeouts
 sensor_check_task = None
-camera=None
+smart_camera = None
 
 async def sensor_timeout_checker():
     """Background task to periodically check for sensor timeouts."""
@@ -31,15 +48,15 @@ async def sensor_timeout_checker():
 async def lifespan(app: FastAPI):
     #Appl
     global sensor_check_task
-    global camera
+    global smart_camera
     
     # Startup
     mqtt_listener.start()
     sensor_check_task = asyncio.create_task(sensor_timeout_checker())
     print("[STARTUP] Sensor timeout checker started")
 
-    camera = SmartCamera()
-    security_task = asyncio.create_task(camera.run_security_loop("app/detect.tflite"))
+    smart_camera = SmartCamera()
+    security_task = asyncio.create_task(smart_camera.run_security_loop("app/detect.tflite"))
     
     yield
     
@@ -58,8 +75,8 @@ async def lifespan(app: FastAPI):
         except asyncio.CancelledError:
             pass
 
-    if camera:
-        camera.destroy()
+    if smart_camera:
+        smart_camera.destroy()
     
     mqtt_listener.shutdown()
     print("[SHUTDOWN] Cleanup complete")
@@ -86,6 +103,7 @@ app.include_router(sensors.router, prefix="/api/sensors", tags=["Sensors"])
 app.include_router(alerts.router, prefix="/api/alerts", tags=["Alerts"])
 app.include_router(ai_analysis.router, prefix="/api/ai", tags=["AI Analysis"])
 app.include_router(websocket.router, prefix="/ws", tags=["WebSocket"])
+app.include_router(camera_router.router, prefix="/api/camera", tags=["Camera"])
 
 
 @app.get("/")
@@ -104,4 +122,4 @@ async def health_check():
 
 @app.get("/video_feed")
 async def video_feed():
-        return StreamingResponse(camera.stream(), media_type="multipart/x-mixed-replace; boundary=frame")
+        return StreamingResponse(smart_camera.stream(), media_type="multipart/x-mixed-replace; boundary=frame")

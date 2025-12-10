@@ -33,7 +33,8 @@ export interface PlantImage {
 
 export interface MotionEvent {
   id: string;
-  url: string;
+  url: string;  // Thumbnail/frame image
+  videoUrl?: string;  // 10-second recorded video clip
   timestamp: number;
   detectedObject?: string;
 }

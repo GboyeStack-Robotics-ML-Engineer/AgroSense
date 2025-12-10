@@ -107,7 +107,13 @@ const App: React.FC = () => {
   // Keep refs in sync
   useEffect(() => { soundEnabledRef.current = soundEnabled; }, [soundEnabled]);
   useEffect(() => { showLandingPageRef.current = showLandingPage; }, [showLandingPage]);
-  useEffect(() => { selectedLanguageRef.current = selectedLanguage; }, [selectedLanguage]);
+  useEffect(() => {
+    selectedLanguageRef.current = selectedLanguage;
+    // Cancel any ongoing speech when language changes to apply new voice immediately
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+  }, [selectedLanguage]);
 
   // Extract unique sensor IDs from data
   useEffect(() => {
@@ -124,6 +130,7 @@ const App: React.FC = () => {
   useEffect(() => {
     let ws: WebSocket | null = null;
     let reconnectTimeout: NodeJS.Timeout | null = null;
+    let pingInterval: NodeJS.Timeout | null = null;
     let isComponentMounted = true;
     
     const connect = () => {
@@ -143,11 +150,24 @@ const App: React.FC = () => {
       ws.onopen = () => {
         console.log('🔌 Connected to backend WebSocket');
         setIsOnline(true);
+        
+        // Start ping interval to keep connection alive
+        if (pingInterval) clearInterval(pingInterval);
+        pingInterval = setInterval(() => {
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send('ping');
+          }
+        }, 25000); // Ping every 25 seconds
       };
       
       ws.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data);
+          
+          // Ignore ping/pong keepalive messages
+          if (message.type === 'ping' || message.type === 'pong' || message.type === 'acknowledgment') {
+            return;
+          }
           
           // Handle initial sensor status sync
           if (message.type === 'sensor_status_init') {
@@ -241,6 +261,11 @@ const App: React.FC = () => {
         console.log('❌ Disconnected from backend WebSocket');
         setIsOnline(false);
         ws = null;
+        // Clear ping interval when connection closes
+        if (pingInterval) {
+          clearInterval(pingInterval);
+          pingInterval = null;
+        }
         scheduleReconnect();
       };
     };
@@ -264,6 +289,7 @@ const App: React.FC = () => {
     return () => {
       isComponentMounted = false;
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      if (pingInterval) clearInterval(pingInterval);
       if (ws) {
         ws.onclose = null; // Prevent reconnect on intentional close
         ws.close();
@@ -422,18 +448,24 @@ const App: React.FC = () => {
     const translations = alertTranslations[alertKey];
     if (!translations) return;
     
-    const text = translations[selectedLanguage] || translations.english;
-    speak(text);
+    // Use ref to get current language (avoids stale closure in callbacks)
+    const currentLang = selectedLanguageRef.current;
+    const text = translations[currentLang] || translations.english;
+    speak(text, currentLang);
   };
 
-  const speak = (text: string) => {
+  const speak = (text: string, lang?: Language) => {
     if ('speechSynthesis' in window) {
+      // Cancel any ongoing speech first
+      window.speechSynthesis.cancel();
+      
       const utterance = new SpeechSynthesisUtterance(text);
-      const voice = getVoiceForLanguage(selectedLanguage);
+      const language = lang || selectedLanguageRef.current;
+      const voice = getVoiceForLanguage(language);
       if (voice) utterance.voice = voice;
       
       // Adjust rate for non-English to make it clearer
-      if (selectedLanguage !== 'english') {
+      if (language !== 'english') {
         utterance.rate = 0.9;
       }
       

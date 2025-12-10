@@ -5,6 +5,8 @@ import threading
 import http.server
 import socketserver
 import os
+from collections import deque
+from datetime import datetime
 
 from tflite_runtime.interpreter import Interpreter
 
@@ -15,6 +17,7 @@ from ..models import AnalysisLog
 from ..routers.websocket import broadcast_alert
 import base64
 import logging
+import subprocess
 
 
 logging.basicConfig(
@@ -25,6 +28,10 @@ logging.basicConfig(
 
 logger = logging.getLogger("SmartCameraService")
 
+# Directory to store recorded videos
+VIDEOS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "videos")
+os.makedirs(VIDEOS_DIR, exist_ok=True)
+
 
 class SmartCamera():
         def __init__(self):
@@ -32,13 +39,18 @@ class SmartCamera():
 
                 self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
                 self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+                self.fps = self.cap.get(cv2.CAP_PROP_FPS) or 30
+                
                 if not self.cap.isOpened():
                         print("Error: Could not open USB Camera.")
-
 
                 self.frame = None
                 self.lock = threading.Lock()
                 self.running = True
+                
+                # Frame buffer for video recording (stores ~15 seconds of frames)
+                self.frame_buffer = deque(maxlen=int(self.fps * 15))
+                self.buffer_lock = threading.Lock()
 
                 self.thread = threading.Thread(target = self._update, daemon=True)
                 self.thread.start()
@@ -47,12 +59,87 @@ class SmartCamera():
                 while self.running == True:
                         success, frame = self.cap.read()
                         if success:
+                                timestamp = time.time()
                                 with self.lock:
                                         self.frame = frame
+                                # Also store in buffer for video recording
+                                with self.buffer_lock:
+                                        self.frame_buffer.append((timestamp, frame.copy()))
 
         def get_frame(self):
                 with self.lock:
                         return self.frame.copy() if self.frame is not None else None
+        
+        def record_video_clip(self, duration_seconds=10):
+                """
+                Record a video clip from the moment of detection.
+                Captures frames from buffer (past) + continues recording for duration_seconds.
+                Returns the filename of the saved video.
+                """
+                try:
+                        # Generate unique filename
+                        timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        filename = f"alert_{timestamp_str}.mp4"
+                        filepath = os.path.join(VIDEOS_DIR, filename)
+                        
+                        # Get frames from buffer (past ~5 seconds)
+                        with self.buffer_lock:
+                                past_frames = list(self.frame_buffer)
+                        
+                        logger.info(f"Recording video: {len(past_frames)} frames in buffer, fps={self.fps}")
+                        
+                        # Video writer setup - try H264 first, fallback to XVID
+                        # H264 is best for browser compatibility
+                        fourcc = cv2.VideoWriter_fourcc(*'avc1')  # H.264 codec
+                        out = cv2.VideoWriter(filepath, fourcc, self.fps, (640, 480))
+                        
+                        # If H264 fails, try XVID
+                        if not out.isOpened():
+                                logger.warning("H264 codec not available, trying XVID...")
+                                filename = f"alert_{timestamp_str}.avi"
+                                filepath = os.path.join(VIDEOS_DIR, filename)
+                                fourcc = cv2.VideoWriter_fourcc(*'XVID')
+                                out = cv2.VideoWriter(filepath, fourcc, self.fps, (640, 480))
+                        
+                        if not out.isOpened():
+                                logger.error("Failed to open VideoWriter with any codec")
+                                return None
+                        
+                        # Write past frames from buffer (last 5 seconds)
+                        frames_written = 0
+                        past_frame_count = min(len(past_frames), int(self.fps * 5))
+                        for _, frame in past_frames[-past_frame_count:]:
+                                out.write(frame)
+                                frames_written += 1
+                        
+                        logger.info(f"Wrote {frames_written} frames from buffer")
+                        
+                        # Continue recording for remaining duration (5 more seconds)
+                        remaining_seconds = max(5, duration_seconds - 5)
+                        remaining_frames = int(self.fps * remaining_seconds)
+                        
+                        logger.info(f"Recording {remaining_frames} more frames ({remaining_seconds}s)...")
+                        
+                        for i in range(remaining_frames):
+                                frame = self.get_frame()
+                                if frame is not None:
+                                        out.write(frame)
+                                        frames_written += 1
+                                time.sleep(1.0 / self.fps)
+                        
+                        out.release()
+                        
+                        # Verify the video was created
+                        if os.path.exists(filepath) and os.path.getsize(filepath) > 0:
+                                logger.info(f"Video clip saved: {filename} ({frames_written} frames, {os.path.getsize(filepath)} bytes)")
+                                return filename
+                        else:
+                                logger.error(f"Video file not created or empty: {filepath}")
+                                return None
+                        
+                except Exception as e:
+                        logger.error(f"Error recording video: {e}")
+                        return None
         
         def destroy(self):
                 self.running = False
@@ -63,6 +150,8 @@ class SmartCamera():
         def stream(self):
                 while True:
                         frame = self.get_frame()
+                        if frame is None:
+                                continue
                         ret, buffer = cv2.imencode(".jpg", frame)
                         if not ret:
                                 continue
@@ -79,25 +168,34 @@ class SmartCamera():
 
                         prev = self.get_frame()
                         await asyncio.sleep(2)
-                        next = self.get_frame()
-                        if (prev is not None) and (next is not None):
-                                intruder = await asyncio.to_thread(detect_motion, prev, next, model_path)
+                        next_frame = self.get_frame()
+                        if (prev is not None) and (next_frame is not None):
+                                intruder = await asyncio.to_thread(detect_motion, prev, next_frame, model_path)
                                 if intruder is not None:
-                                        cv2.imwrite("intruder.jpg", intruder)
-                                        logger.info("created intruder pic")
+                                        logger.info("Intruder detected! Recording video clip...")
+                                        
+                                        # Record video clip (10 seconds)
+                                        video_filename = await asyncio.to_thread(self.record_video_clip, 10)
+                                        
+                                        # Save the detection frame
                                         ret, buffer = cv2.imencode(".jpg", intruder)
                                         if not ret:
                                                 continue
                                         frame_bytes = buffer.tobytes()
 
+                                        # Save to database with video filename
+                                        alert_payload = await asyncio.to_thread(
+                                                save_alert_to_db, 
+                                                frame_bytes, 
+                                                video_filename
+                                        )
 
-                                        alert_payload = await asyncio.to_thread(save_alert_to_db, frame_bytes)
-
-                                        # 2. Run Broadcast (Async) in the MAIN LOOP
-                                        # We are back in the main async context here, so we can safely use the websocket manager
+                                        # Broadcast to frontend
                                         if alert_payload:
                                                 await broadcast_alert(alert_payload)
-                                        print("Alert Broadcasted to Frontend")
+                                        logger.info("Alert broadcasted to frontend")
+                                        asyncio.sleep(15)  # Avoid immediate re-detection
+
                 except Exception as e:
                        logger.error(f"security loop error: {e}")
 
@@ -166,7 +264,7 @@ def detect_motion(prev, next, model_path):
                                                                 label_map = {0:'Person', 16:'Bird', 17:'Cat', 18:'Dog', 21:'Cow'}                                 
                                                                 obj_name = label_map.get(detected_id, 'Animal')
 
-                                                                label_text = f"Intruder: {obj_name}, Conf: {scores[i]*100:1f}"
+                                                                label_text = f"Intruder: {obj_name}, Conf: {round(scores[i]*100, 1)}%"
                                                                 (text_w, text_h), _ = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
                                                                 cv2.rectangle(frame, (x1, y1-20), (x1 + text_w, y1), (0,0,255),-1)
 
@@ -177,14 +275,15 @@ def detect_motion(prev, next, model_path):
                 	logger.error(f"Model Error: {str(e)}")
 
 
-def save_alert_to_db(image_bytes):
+def save_alert_to_db(image_bytes, video_filename=None):
     """Helper to run DB operations synchronously"""
     db = SessionLocal()
     try:
         capture = AnalysisLog(
             analysis_type="security",
             result="Detected",
-            image_path=image_bytes # Ensure your DB model handles bytes or path string correctly
+            image_path=image_bytes,  # Store image bytes
+            video_path=video_filename  # Store video filename
         )
         db.add(capture)
         db.commit()
@@ -197,14 +296,14 @@ def save_alert_to_db(image_bytes):
             "id": str(capture.id),
             "timestamp": capture.timestamp.isoformat(),
             "detectedObject": capture.result, 
-            "image_data": base64_img  # The raw image data
+            "image_data": base64_img,  # The raw image data
+            "video_filename": video_filename  # Video clip filename
         }
         
-        # Trigger WebSocket (Need to handle the async call from sync context carefully)
-        # Usually easier to fire-and-forget or use a queue here
         return alert_payload
         
     except Exception as e:
         print(f"DB Error: {e}")
+        return None
     finally:
         db.close()

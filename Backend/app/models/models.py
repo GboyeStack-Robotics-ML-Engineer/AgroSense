@@ -51,3 +51,5 @@ class AnalysisLog(Base):
     
     # Store image reference or base64 (optional)
     image_path = Column(String, nullable=True)
+    # Store video clip filename (for security alerts)
+    video_path = Column(String, nullable=True)

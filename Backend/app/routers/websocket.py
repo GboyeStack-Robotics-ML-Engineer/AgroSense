@@ -49,8 +49,10 @@ async def websocket_sensor_data(websocket: WebSocket):
     """
     WebSocket endpoint for real-time sensor data streaming.
     Clients connect and receive live sensor updates.
+    Uses ping/pong keepalive to maintain connection.
     """
     await manager.connect(websocket)
+    print(f"[WS] New client connected. Total connections: {len(manager.active_connections)}")
     
     # Send current sensor status to newly connected client
     try:
@@ -65,27 +67,48 @@ async def websocket_sensor_data(websocket: WebSocket):
             },
             "timestamp": datetime.utcnow().isoformat()
         })
-    except:
-        pass
+    except Exception as e:
+        print(f"[WS] Failed to send initial status: {e}")
     
     try:
         while True:
-            # Keep connection alive and wait for messages
-            data = await websocket.receive_text()
-            
-            # Echo back or handle client messages if needed
-            await websocket.send_json({
-                "type": "acknowledgment",
-                "message": "Connected to sensor data stream",
-                "timestamp": datetime.utcnow().isoformat()
-            })
+            # Use asyncio.wait_for with timeout to handle ping/pong keepalive
+            try:
+                # Wait for message with 30 second timeout
+                data = await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
+                
+                # Handle ping from client
+                if data == "ping":
+                    await websocket.send_json({
+                        "type": "pong",
+                        "timestamp": datetime.utcnow().isoformat()
+                    })
+                else:
+                    # Echo back acknowledgment for other messages
+                    await websocket.send_json({
+                        "type": "acknowledgment",
+                        "message": "Message received",
+                        "timestamp": datetime.utcnow().isoformat()
+                    })
+                    
+            except asyncio.TimeoutError:
+                # No message received, send a ping to keep connection alive
+                try:
+                    await websocket.send_json({
+                        "type": "ping",
+                        "timestamp": datetime.utcnow().isoformat()
+                    })
+                except:
+                    # Connection is dead
+                    break
     
     except WebSocketDisconnect:
-        manager.disconnect(websocket)
         print("Client disconnected from sensor data stream")
     except Exception as e:
-        print(f"WebSocket error: {e}")
+        print(f"[WS] WebSocket error: {e}")
+    finally:
         manager.disconnect(websocket)
+        print(f"[WS] Client removed. Remaining connections: {len(manager.active_connections)}")
 
 
 def update_sensor_status(sensor_id: int) -> bool:

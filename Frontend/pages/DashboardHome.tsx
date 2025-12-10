@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Droplets, 
   Thermometer, 
@@ -13,12 +13,25 @@ import {
   Sprout,
   ShieldCheck,
   ExternalLink,
-  Activity
+  Activity,
+  Camera,
+  Loader2
 } from 'lucide-react';
-import { SensorData, Alert, View } from '../types';
+import { SensorData, Alert, View, MotionEvent } from '../types';
 import { StatCard } from '../components/StatCard';
 import { SensorChart } from '../components/MoistureChart';
-import { mockPlantImages, mockMotionEvents } from '../services/mockData';
+import { mockPlantImages } from '../services/mockData';
+
+// Get backend URL dynamically
+const getBackendUrl = () => {
+  const hostname = window.location.hostname;
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    return 'http://localhost:8000';
+  }
+  return `http://${hostname}:8000`;
+};
+
+const backendUrl = getBackendUrl();
 
 interface SensorStatus {
   online: boolean;
@@ -45,6 +58,8 @@ const SENSORS = [
 const DashboardHome: React.FC<DashboardHomeProps> = ({ data, history, alerts, onViewChange, isDarkMode, selectedSensorId = null, sensorStatuses = {} }) => {
   const [isAlertsOpen, setIsAlertsOpen] = useState(true);
   const [sensorIndex, setSensorIndex] = useState(0);
+  const [latestMotion, setLatestMotion] = useState<MotionEvent | null>(null);
+  const [isLoadingMotion, setIsLoadingMotion] = useState(true);
 
   const moistureStatus = data.moisture < 30 ? 'critical' : data.moisture < 50 ? 'warning' : 'normal';
   const phStatus = data.ph < 5.5 || data.ph > 7.5 ? 'warning' : 'normal';
@@ -58,7 +73,36 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ data, history, alerts, on
   
   // Get latest preview data
   const latestLeaf = mockPlantImages[0];
-  const latestMotion = mockMotionEvents[0];
+
+  // Fetch latest security alert
+  useEffect(() => {
+    const fetchLatestAlert = async () => {
+      try {
+        setIsLoadingMotion(true);
+        const response = await fetch(`${backendUrl}/api/camera/alerts/latest`);
+        if (!response.ok) throw new Error('Failed to fetch');
+        
+        const data = await response.json();
+        if (data.alert) {
+          setLatestMotion({
+            id: data.alert.id,
+            timestamp: new Date(data.alert.timestamp).getTime(),
+            detectedObject: data.alert.detectedObject || "Intruder Detected",
+            url: data.alert.image_data ? `data:image/jpeg;base64,${data.alert.image_data}` : '',
+            videoUrl: data.alert.video_filename 
+              ? `${backendUrl}/api/camera/videos/${data.alert.video_filename}`
+              : undefined
+          });
+        }
+      } catch (error) {
+        console.error('Failed to fetch latest security alert:', error);
+      } finally {
+        setIsLoadingMotion(false);
+      }
+    };
+
+    fetchLatestAlert();
+  }, []);
 
   const nextSensor = () => {
     setSensorIndex((prev) => (prev + 1) % SENSORS.length);
@@ -247,22 +291,33 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ data, history, alerts, on
               </button>
            </div>
 
-           <div className="relative rounded-lg overflow-hidden border border-slate-100 dark:border-slate-700 group">
-              <img 
-                src={latestMotion.url} 
-                alt="Motion Capture" 
-                className="w-full h-32 object-cover transition-transform duration-700 group-hover:scale-105 bg-slate-100 dark:bg-slate-800"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-3">
-                 <div className="w-full flex justify-between items-center text-white">
-                    <div className="flex items-center gap-2">
-                        <Activity className="w-3 h-3 text-red-400 animate-pulse" />
-                        <span className="text-xs font-medium truncate max-w-[150px]">{latestMotion.detectedObject || "Motion Detected"}</span>
-                    </div>
-                    <span className="text-xs opacity-80">{new Date(latestMotion.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                 </div>
-              </div>
-           </div>
+           {isLoadingMotion ? (
+             <div className="flex items-center justify-center h-32 rounded-lg border border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
+               <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
+             </div>
+           ) : latestMotion ? (
+             <div className="relative rounded-lg overflow-hidden border border-slate-100 dark:border-slate-700 group">
+                <img 
+                  src={latestMotion.url} 
+                  alt="Motion Capture" 
+                  className="w-full h-32 object-cover transition-transform duration-700 group-hover:scale-105 bg-slate-100 dark:bg-slate-800"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-3">
+                   <div className="w-full flex justify-between items-center text-white">
+                      <div className="flex items-center gap-2">
+                          <Activity className="w-3 h-3 text-red-400 animate-pulse" />
+                          <span className="text-xs font-medium truncate max-w-[150px]">{latestMotion.detectedObject || "Motion Detected"}</span>
+                      </div>
+                      <span className="text-xs opacity-80">{new Date(latestMotion.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                   </div>
+                </div>
+             </div>
+           ) : (
+             <div className="flex flex-col items-center justify-center h-32 rounded-lg border border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-400">
+               <Camera className="w-8 h-8 mb-2 opacity-40" />
+               <span className="text-xs">No security events recorded</span>
+             </div>
+           )}
         </div>
       </div>
 

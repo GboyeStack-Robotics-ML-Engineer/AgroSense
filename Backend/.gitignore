@@ -35,3 +35,6 @@ Thumbs.db
 
 *.jpg
 node_modules/
+app/videos/
+videos/
+app/videos/*.avi
