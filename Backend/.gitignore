@@ -33,5 +33,5 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
-
-..node_modules/
+*.jpg
+node_modules/
