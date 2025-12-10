@@ -92,11 +92,14 @@ app = FastAPI(
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_url, "http://localhost:3000"],
+    allow_origins=[settings.frontend_url, "http://localhost:3000","http://172.16.120.167:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+
 
 # Include routers
 app.include_router(sensors.router, prefix="/api/sensors", tags=["Sensors"])
