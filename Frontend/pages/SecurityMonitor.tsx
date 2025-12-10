@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { mockMotionEvents } from '../services/mockData';
 import { analyzeSecurityImage } from '../services/geminiService';
 import { ShieldAlert, Eye, Clock, Loader2, Camera, X, MapPin, Calendar, Share2, Download } from 'lucide-react';
@@ -69,6 +69,48 @@ const SecurityMonitor: React.FC = () => {
       setAnalyzingId(null);
     }
   };
+
+
+// ... inside SecurityMonitor component ...
+
+  // 1. WebSocket Connection Logic
+useEffect(() => {
+    // 1. Connect to your existing endpoint defined in websocket.py
+    const ws = new WebSocket('ws://localhost:8000/ws/sensor-data');
+
+    ws.onopen = () => console.log('Connected to Sensor/Security Stream');
+
+    ws.onmessage = (event) => {
+        try {
+            const message = JSON.parse(event.data);
+
+            // 2. Filter for "alert" type messages defined in websocket.py
+            if (message.type === 'alert') {
+                const alertData = message.data;
+
+                // 3. Convert backend payload to your Frontend MotionEvent type
+                const newEvent: MotionEvent = {
+                    id: alertData.id,
+                    timestamp: alertData.timestamp,
+                    detectedObject: alertData.detectedObject || "Intruder Detected",
+                    // Construct the Base64 image string for the <img> tag
+                    url: `data:image/jpeg;base64,${alertData.image_data}`, 
+                };
+
+                // 4. Add to the TOP of the list (newest first)
+                setEvents((prev) => [newEvent, ...prev]);
+            }
+            
+        } catch (error) {
+            console.error("Error parsing WebSocket message:", error);
+        }
+    };
+
+    return () => {
+        if (ws.readyState === 1) ws.close();
+    };
+}, []);
+// ... rest of your code ...
 
   return (
     <div className="space-y-6">

@@ -132,4 +132,4 @@ class MQTTListener:
         finally:
             db.close()
 
-mqtt_listener = MQTTListener()
+mqtt_listener = MQTTListener()  
