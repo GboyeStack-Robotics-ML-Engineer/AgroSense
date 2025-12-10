@@ -194,7 +194,7 @@ class SmartCamera():
                                         if alert_payload:
                                                 await broadcast_alert(alert_payload)
                                         logger.info("Alert broadcasted to frontend")
-                                        asyncio.sleep(15)  # Avoid immediate re-detection
+                                        asyncio.sleep(60)  # Avoid immediate re-detection
 
                 except Exception as e:
                        logger.error(f"security loop error: {e}")
