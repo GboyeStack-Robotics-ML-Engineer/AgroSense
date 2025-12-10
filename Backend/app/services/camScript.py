@@ -13,6 +13,7 @@ import asyncio
 from ..database import SessionLocal
 from ..models import AnalysisLog
 from ..routers.websocket import broadcast_alert
+import base64
 
 
 
@@ -70,15 +71,21 @@ class SmartCamera():
                     await asyncio.sleep(2)
                     next = self.get_frame()
                     if (prev is not None) and (next is not None):
-                            intruder = await asyncio.to_thread(detect_motion, prev, next)
+                        intruder = await asyncio.to_thread(detect_motion, prev, next)
 
-                    ret, buffer = cv2.imencode(".jpg", intruder)
-                    if not ret:
-                            continue
-                    frame_bytes = buffer.tobytes()
+                        ret, buffer = cv2.imencode(".jpg", intruder)
+                        if not ret:
+                                continue
+                        frame_bytes = buffer.tobytes()
 
 
-                    await asyncio.to_thread(save_alert_to_db, frame_bytes)
+                        alert_payload = await asyncio.to_thread(save_alert_to_db, frame_bytes)
+
+                         # 2. Run Broadcast (Async) in the MAIN LOOP
+                        # We are back in the main async context here, so we can safely use the websocket manager
+                        if alert_payload:
+                                await broadcast_alert(alert_payload)
+                        print("Alert Broadcasted to Frontend")
 
 
 def detect_motion(prev, next):
@@ -165,16 +172,19 @@ def save_alert_to_db(image_bytes):
         db.commit()
         db.refresh(capture)
         
-        # Prepare data for WebSocket
-        data = {
-            "id": capture.id,
-            "timestamp": capture.timestamp,
-            "result": capture.result
+        base64_img = base64.b64encode(image_bytes).decode('utf-8')
+        
+        # Structure this exactly how the frontend expects it
+        alert_payload = {
+            "id": str(capture.id),
+            "timestamp": capture.timestamp.isoformat(),
+            "detectedObject": capture.result, 
+            "image_data": base64_img  # The raw image data
         }
         
         # Trigger WebSocket (Need to handle the async call from sync context carefully)
         # Usually easier to fire-and-forget or use a queue here
-        asyncio.run(broadcast_alert(data))
+        return alert_payload
         
     except Exception as e:
         print(f"DB Error: {e}")
